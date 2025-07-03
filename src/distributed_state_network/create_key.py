@@ -1,5 +1,5 @@
 import sys
-from distributed_state_network.util.aes import generate_aes_key
+from util.aes import generate_aes_key
 
 if len(sys.argv) < 2:
     raise Exception("Usage: python create_key.py [output_key_file_location]")

@@ -16,7 +16,7 @@ from distributed_state_network.util import get_dict_hash
 from distributed_state_network.util.cert import CertManager
 from distributed_state_network.util.aes import aes_encrypt, aes_decrypt, generate_aes_key
 
-TICK_INTERVAL = 5
+TICK_INTERVAL = 3
 
 class Router:
     config: RouterConfig
@@ -82,9 +82,11 @@ class Router:
                 raise Exception("No response from server")
         except Exception as e:
             self.logger.error(e)
-            time.sleep(3)
-            if retries < 3:
+            time.sleep(1)
+            if retries < 2:
                 self.send_request(con, path, payload, verify, retries + 1)
+            else:
+                raise RequestException(f'!!ERROR!! {path.upper()} => {con[0]}:{con[1]} (no response)')
         if not res:
             raise RequestException(f'!!ERROR!! {path.upper()} => {con[0]}:{con[1]} (no response)')
         if res.status_code != 200:
@@ -185,14 +187,13 @@ class Router:
         if "state" not in data or "https_certificate" not in data:
             raise Exception(f"bad bootstrap packet")
 
-        version = data["version"]
-        from_rtr_id = data['']
-        if version != self.my_version():
-            msg = f"!!ERROR!! BOOTSTRAP => {from_rtr_id} (Version mismatch {version} != {self.my_version()})"
+        state = RouterState.from_dict(data["state"])
+
+        if state.version != self.my_version():
+            msg = f"!!ERROR!! BOOTSTRAP => {state.router_id} (Version mismatch {state.version} != {self.my_version()})"
             self.logger.error(msg)
             return
 
-        state = RouterState.from_dict(data["state"])
         cert = bytes.fromhex(data["https_certificate"])
         self.cert_manager.ensure_cert(state.router_id, cert)
         self.router_states[state.router_id] = state
@@ -233,7 +234,7 @@ class Router:
     def my_state(self):
         return self.router_states[self.config.router_id]
 
-    def bootstrap(self, con: Tuple[str, int]):
+    def bootstrap(self, con: Tuple[str, int]) -> bool:
         bootstrap_id = self.send_bootstrap(con)
         for key in list(self.router_states.keys())[:]:
             if key != self.config.router_id and key != bootstrap_id:
@@ -288,9 +289,3 @@ class Router:
         if cert is None:
             return None
         return cert.replace(".crt", ".key")
-    
-    @staticmethod
-    def generate_key(out_file_path: str):
-        key = generate_aes_key()
-        with open(out_file_path, 'w', encoding='utf-8') as f:
-            f.write(key)

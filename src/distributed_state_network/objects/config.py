@@ -1,7 +1,7 @@
 from typing import Dict, List
 from dataclasses import dataclass
 
-from distributed_state_network.endpoint import Endpoint
+from distributed_state_network.objects.endpoint import Endpoint
 
 @dataclass(frozen=True)
 class RouterConfig:

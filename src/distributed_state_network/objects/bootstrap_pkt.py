@@ -49,6 +49,5 @@ class BootstrapPacket:
     def create_payload(version: str, state: Dict[str, str], cert: bytes):
         return {
             "state": state,
-            "version": version,
             "https_certificate": cert.hex()
         }

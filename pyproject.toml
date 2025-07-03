@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling", "cryptography", "logging", "ipaddress"]
+requires = ["hatchling", "cryptography", "logging", "ipaddress", "requests"]
 build-backend = "hatchling.build"
 
 [project]
@@ -24,7 +24,8 @@ requires-python = ">=3.10"
 dependencies = [
     "cryptography",
     "logging",
-    "ipaddress"
+    "ipaddress",
+    "requests"
 ]
 
 [project.urls]

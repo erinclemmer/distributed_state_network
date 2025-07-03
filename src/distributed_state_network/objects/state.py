@@ -6,7 +6,7 @@ class RouterState:
     ip: str
     port: int
     version: str
-    state: Dict
+    state: Dict[str, str]
     last_update: float
 
     def __init__(
