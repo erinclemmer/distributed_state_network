@@ -11,7 +11,7 @@ from typing import List
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '../src'))
 
-from distributed_state_network import NodeServer, Endpoint, NodeConfig
+from distributed_state_network import DSNodeServer, Endpoint, DSNodeConfig
 
 current_port = 8000
 nodes = []
@@ -19,7 +19,7 @@ nodes = []
 key_file = "src/distributed_state_network/test.key"
 
 if not os.path.exists(key_file):
-    NodeServer.generate_key(key_file)
+    DSNodeServer.generate_key(key_file)
 
 def serve(httpd):
     httpd.serve_forever()
@@ -27,7 +27,7 @@ def serve(httpd):
 def spawn_node(rtr_id: str, bootstrap_nodes: List[Endpoint] = []):
     global current_port
     current_port += 1
-    n = NodeServer.start(NodeConfig(rtr_id, current_port, key_file, bootstrap_nodes))
+    n = DSNodeServer.start(DSNodeConfig(rtr_id, current_port, key_file, bootstrap_nodes))
     global nodes
     nodes.append(n)
     return n

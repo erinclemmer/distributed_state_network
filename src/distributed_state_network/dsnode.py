@@ -10,7 +10,7 @@ from typing import Dict, Tuple, List, Optional
 
 from distributed_state_network.objects.packets import BootstrapPacket, HelloPacket
 from distributed_state_network.objects.state import NodeState
-from distributed_state_network.objects.config import NodeConfig
+from distributed_state_network.objects.config import DSNodeConfig
 
 from distributed_state_network.util import get_dict_hash
 from distributed_state_network.util.cert import CertManager
@@ -18,14 +18,14 @@ from distributed_state_network.util.aes import aes_encrypt, aes_decrypt, generat
 
 TICK_INTERVAL = 3
 
-class Node:
-    config: NodeConfig
+class DSNode:
+    config: DSNodeConfig
     node_states: Dict[str, NodeState]
     shutting_down: bool = False
 
     def __init__(
             self, 
-            config: NodeConfig,
+            config: DSNodeConfig,
             version: str,
         ):
         self.config = config

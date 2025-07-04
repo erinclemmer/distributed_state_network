@@ -6,8 +6,8 @@ from typing import Tuple
 from threading import Thread
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-from distributed_state_network.node import Node
-from distributed_state_network.objects.config import NodeConfig
+from distributed_state_network.dsnode import DSNode
+from distributed_state_network.objects.config import DSNodeConfig
 from distributed_state_network.util.aes import generate_aes_key
 from distributed_state_network.util import stop_thread
 
@@ -21,7 +21,7 @@ def _respond_bytes(handler: BaseHTTPRequestHandler, data: bytes):
     handler.wfile.write(data)
     handler.wfile.flush()
 
-class NodeHandler(BaseHTTPRequestHandler):
+class DSNodeHandler(BaseHTTPRequestHandler):
     server: "NodeServer"
 
     def do_POST(self):
@@ -57,15 +57,15 @@ class NodeHandler(BaseHTTPRequestHandler):
 def serve(httpd):
     httpd.serve_forever()
 
-class NodeServer(HTTPServer):
+class DSNodeServer(HTTPServer):
     def __init__(
         self, 
-        config: NodeConfig
+        config: DSNodeConfig
     ):
-        super().__init__(("127.0.0.1", config.port), NodeHandler)
-        self.node = Node(config, VERSION)
+        super().__init__(("127.0.0.1", config.port), DSNodeHandler)
+        self.node = DSNode(config, VERSION)
         self.config = config
-        self.node.logger.info(f'Started Node on port {config.port}')
+        self.node.logger.info(f'Started DSNode on port {config.port}')
 
     def stop(self):
         self.shutdown()
@@ -80,8 +80,8 @@ class NodeServer(HTTPServer):
             f.write(key)
 
     @staticmethod 
-    def start(config: NodeConfig) -> 'NodeServer':
-        n = NodeServer(config)
+    def start(config: DSNodeConfig) -> 'NodeServer':
+        n = DSNodeServer(config)
         ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         cert_path = n.node.cert_manager.cert_path(config.node_id)
         ssl_context.load_cert_chain(
