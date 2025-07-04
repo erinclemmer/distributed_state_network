@@ -26,7 +26,7 @@ class Router:
     def __init__(
             self, 
             config: RouterConfig,
-            protocol_version: str,
+            version: str,
         ):
         self.config = config
         self.router_states = { }
@@ -36,7 +36,7 @@ class Router:
         if not os.path.exists(config.aes_key_file):
             raise Exception(f"Could not find aes key file in {config.aes_key_file}")
         
-        self.router_states[self.config.router_id] = RouterState(self.config.router_id, ("127.0.0.1", config.port), protocol_version, time.time(), { })
+        self.router_states[self.config.router_id] = RouterState(self.config.router_id, ("127.0.0.1", config.port), version, time.time(), { })
         threading.Thread(target=self.network_tick).start()
 
     def get_aes_key(self):
@@ -61,6 +61,8 @@ class Router:
                 continue
             try:
                 try:
+                    if self.shutting_down:
+                        return
                     self.send_ping(rtr_id)
                 except RequestException:
                     if rtr_id in self.router_states: # double check if something has changed since the ping request started
