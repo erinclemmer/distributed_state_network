@@ -11,9 +11,7 @@ from typing import List
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '../src'))
 
-from distributed_state_network.objects.config import NodeConfig
-from distributed_state_network.handler import NodeServer
-from distributed_state_network.objects.endpoint import Endpoint
+from distributed_state_network import NodeServer, Endpoint, NodeConfig
 
 current_port = 8000
 nodes = []
