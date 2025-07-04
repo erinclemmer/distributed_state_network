@@ -4,6 +4,7 @@ import ssl
 import time
 import ctypes
 import random
+import logging
 import unittest
 import threading
 from typing import List
@@ -116,7 +117,7 @@ class TestRouter(unittest.TestCase):
             for c in connectors:
                 if c.config.router_id not in network_labels:
                     continue
-                self.assertEqual(network_labels, list(c.router.peers()))
+                self.assertEqual(sorted(network_labels), sorted(list(c.router.peers())))
 
     def test_state(self):
         bootstrap = spawn_router("bootstrap")

@@ -8,7 +8,7 @@ import threading
 from requests import RequestException
 from typing import Dict, Tuple, List, Optional
 
-from distributed_state_network.objects.bootstrap_pkt import BootstrapPacket
+from distributed_state_network.objects.packets import BootstrapPacket, HelloPacket
 from distributed_state_network.objects.state import RouterState
 from distributed_state_network.objects.config import RouterConfig
 
@@ -33,11 +33,13 @@ class Router:
         self.cert_manager = CertManager(config.router_id)
         CertManager.generate_certs(config.router_id)
         self.logger = logging.getLogger("DSN: " + config.router_id)
+        self.logger.setLevel(0)
         if not os.path.exists(config.aes_key_file):
             raise Exception(f"Could not find aes key file in {config.aes_key_file}")
         
         self.router_states[self.config.router_id] = RouterState(self.config.router_id, ("127.0.0.1", config.port), protocol_version, time.time(), { })
         threading.Thread(target=self.network_tick).start()
+        self.logger.info(f"Started router on port {self.config.port}")
 
     def get_aes_key(self):
         with open(self.config.aes_key_file, 'rb') as f:
@@ -68,16 +70,16 @@ class Router:
             except ValueError:
                 pass
 
-    def send_request_to_router(self, router_id: str, path: str, payload: Dict, verify):
+    def send_request_to_router(self, router_id: str, path: str, payload: bytes, verify) -> Tuple[requests.Response, bytes]:
         if router_id not in self.router_states:
             raise Exception(f"cannot send {path} to unknown router id: {router_id}")
         ip, port = self.connection_from_router(router_id)
         return self.send_request((ip, port), path, payload, verify)
 
-    def send_request(self, con: Tuple[str, int], path: str, payload: Dict, verify, retries: int = 0):
+    def send_request(self, con: Tuple[str, int], path: str, payload: bytes, verify, retries: int = 0) -> Tuple[requests.Response, bytes]:
         res = None
         try:
-            res = requests.post(f'https://{con[0]}:{con[1]}/{path}', json=payload, verify=verify, timeout=2)
+            res = requests.post(f'https://{con[0]}:{con[1]}/{path}', data=self.encrypt_data(payload), verify=verify, timeout=2)
             if not res:
                 raise Exception("No response from server")
         except Exception as e:
@@ -94,127 +96,110 @@ class Router:
         
         if res.content == b'DOWN':
             raise RequestException(f'!!ERROR!! {path.upper()} => {con[0]}:{con[1]} (router is down)')
-        return res
 
-    def encrypt_data(self, data: Dict) -> bytes:
-        return aes_encrypt(self.get_aes_key(), json.dumps(data).encode('utf-8'))
+        if res.content == b'Not Authorized':
+            raise RequestException(f'!!ERROR!! {path.upper()} => {con[0]}:{con[1]} (not authorized)')
+        
+        decrypted_data = b''
+        if len(res.content) > 0:
+            try:
+                decrypted_data = self.decrypt_data(res.content)
+            except Exception as e:
+                raise RequestException(f'!!ERROR!! {path.upper()} => {con[0]}:{con[1]} (cannot decrypt response)')
 
-    def decrypt_data(self, data: bytes) -> Dict:
-        return json.loads(aes_decrypt(self.get_aes_key(), data).decode('utf-8'))
+        return res, decrypted_data
+
+    def encrypt_data(self, data: bytes) -> bytes:
+        return aes_encrypt(self.get_aes_key(), data)
+
+    def decrypt_data(self, data: bytes) -> bytes:
+        return aes_decrypt(self.get_aes_key(), data)
 
     def send_hello(self, router_id: str):
         self.logger.info(f"HELLO => {router_id}")
 
-        payload = {
-                "router_id": self.config.router_id,
-                "https_certificate": self.cert_manager.read_cert(self.config.router_id).hex()
-        }
-
+        payload = HelloPacket(self.config.router_id, self.cert_manager.my_cert()).to_bytes()
+        
         try:
-            res = self.send_request_to_router(router_id, 'hello', { "data": self.encrypt_data(payload).hex() }, False)
+            res, content = self.send_request_to_router(router_id, 'hello', payload, False)
         except Exception as e:
             raise RequestException(f"!!ERROR!! HELLO => {router_id} ({e})")
 
+        self.cert_manager.ensure_cert(router_id, content)
+
+    def handle_hello(self, data: bytes) -> bytes:
         try:
-            data = aes_decrypt(self.get_aes_key(), res.content)
+            pkt = HelloPacket.from_bytes(data)
         except Exception as e:
             self.logger.error(e)
             return b'Not Authorized'
+        
+        self.cert_manager.ensure_cert(pkt.router_id, pkt.https_certificate)
 
-        self.cert_manager.ensure_cert(router_id, data)
-
-    def handle_hello(self, encrypted_data: Dict) -> bytes:
-        try:
-            data = self.decrypt_data(bytes.fromhex(encrypted_data["data"]))
-        except Exception as e:
-            self.logger.error(e)
-            return b'Not Authorized'
-        if "router_id" not in data or "https_certificate" not in data:
-            raise Exception(f"bad hello packet")
-
-        self.cert_manager.ensure_cert(data["router_id"], bytes.fromhex(data["https_certificate"]))
-
-        return aes_encrypt(self.get_aes_key(), self.cert_manager.read_cert(self.config.router_id))
+        return self.cert_manager.my_cert()
 
     def send_ping(self, router_id: str):
         if router_id not in self.router_states:
             raise Exception(f"cannot send PING to unknown router id: {router_id}")
         
         try:
-            self.send_request_to_router(router_id, 'ping', {}, verify=self.cert_manager.cert_path(router_id))
+            self.send_request_to_router(router_id, 'ping', b' ', verify=self.cert_manager.cert_path(router_id))
         except Exception as e:
             raise RequestException(f'!!ERROR!! PING => {router_id}: {e}')
 
     def send_bootstrap(self, con: Tuple[str, int]) -> str:
-        payload = BootstrapPacket.create_payload(self.my_version(), self.my_state().to_dict(), self.cert_manager.read_cert(self.config.router_id))
+        cert_bytes = self.cert_manager.read_cert(self.config.router_id)
+        payload = BootstrapPacket(self.my_version(), self.config.router_id, cert_bytes,  self.my_state().to_dict()).to_bytes()
         name = f'{con[0]}:{con[1]}'
         self.logger.info(f"BOOTSTRAP => {name}")
         
         try:
-            res = self.send_request(con, 'bootstrap', { "data": self.encrypt_data(payload).hex() }, False)
+            res, content = self.send_request(con, 'bootstrap', payload, False)
         except Exception as e:
             raise RequestException(f'!!ERROR!! BOOTSTRAP => {name} {e}')
        
-        try:
-            data = aes_decrypt(self.get_aes_key(), res.content)
-        except Exception as e:
-            msg = "Could not decrypt data from bootstrap"
-            self.logger.exception(msg)
-            raise Exception(msg)
-
-        pkt = BootstrapPacket.from_bytes(data)
+        pkt = BootstrapPacket.from_bytes(content)
     
         self.cert_manager.ensure_cert(pkt.router_id, pkt.https_certificate)
 
-        new_states = { }
         for key in pkt.state_data.keys():
-            if key == self.config.router_id:
-                new_states[self.config.router_id] = self.router_states[self.config.router_id]
-            else:
-                new_states[key] = RouterState.from_dict(pkt.state_data[key])
+            if key != self.config.router_id:
+                self.router_states[key] = RouterState.from_dict(pkt.state_data[key])
 
-        self.router_states = new_states
-        
         return pkt.router_id
 
-    def handle_bootstrap(self, encrypted_data: Dict) -> bytes:
+    def handle_bootstrap(self, data: bytes) -> bytes:
         try:
-            data = self.decrypt_data(bytes.fromhex(encrypted_data["data"]))
+            pkt = BootstrapPacket.from_bytes(data)
         except Exception as e:
-            self.logger.error(e)
-            return b'Not Authorized'
+            self.logger.error(f'Bad packet: {e}')
+            return b'Bad Packet'
 
-        if "state" not in data or "https_certificate" not in data:
-            raise Exception(f"bad bootstrap packet")
-
-        state = RouterState.from_dict(data["state"])
-
-        if state.version != self.my_version():
+        if pkt.version != self.my_version():
             msg = f"!!ERROR!! BOOTSTRAP => {state.router_id} (Version mismatch {state.version} != {self.my_version()})"
             self.logger.error(msg)
-            return
+            return f'Version mismatch {state.version} != {self.my_version()}'.encode('utf-8')
 
-        cert = bytes.fromhex(data["https_certificate"])
-        self.cert_manager.ensure_cert(state.router_id, cert)
-        self.router_states[state.router_id] = state
+        self.cert_manager.ensure_cert(pkt.router_id, pkt.https_certificate)
+        self.router_states[pkt.router_id] = RouterState.from_dict(pkt.state_data)
 
-        cert = self.cert_manager.read_cert(self.config.router_id)
         state_data = { }
         for key in self.router_states.keys():
             state_data[key] = self.router_states[key].to_dict()
         
-        pkt = BootstrapPacket(self.config.router_id, cert, state_data).to_bytes()
-        return aes_encrypt(self.get_aes_key(), pkt)
+        my_cert = self.cert_manager.read_cert(self.config.router_id)
+        return BootstrapPacket(self.my_version(), self.config.router_id, my_cert, state_data).to_bytes()
 
     def send_update(self, router_id: str):
         try:
             self.logger.info(f"UPDATE => {router_id}")
-            self.send_request_to_router(router_id, 'update', self.my_state().to_dict(), self.cert_manager.cert_path(router_id))
+            payload = json.dumps(self.my_state().to_dict()).encode('utf-8')
+            self.send_request_to_router(router_id, 'update', payload, self.cert_manager.cert_path(router_id))
         except Exception as e:
             self.logger.error(f"!!ERROR!! UPDATE => {router_id}: {e}")
 
-    def handle_update(self, data: Dict):
-        pkt = RouterState.from_dict(data)
+    def handle_update(self, data: bytes):
+        pkt = RouterState.from_dict(json.loads(data.decode('utf-8')))
         if pkt.router_id == self.config.router_id:
             return
         if pkt.router_id in self.router_states and self.router_states[pkt.router_id].last_update > pkt.last_update:
@@ -236,14 +221,14 @@ class Router:
 
     def bootstrap(self, con: Tuple[str, int]) -> bool:
         bootstrap_id = self.send_bootstrap(con)
-        for key in list(self.router_states.keys())[:]:
-            if key != self.config.router_id and key != bootstrap_id:
+        for rtr in list(self.router_states.keys())[:]:
+            if rtr != self.config.router_id and rtr != bootstrap_id:
                 try:
-                    self.send_hello(key)
-                    self.send_update(key)
+                    self.send_hello(rtr)
+                    self.send_update(rtr)
                 except RequestException as e:
                     self.logger.error(e)
-                    del self.router_states[key]
+                    del self.router_states[rtr]
                 
     def connection_from_router(self, router_id: str) -> Tuple[str, int]:
         if router_id not in self.router_states:

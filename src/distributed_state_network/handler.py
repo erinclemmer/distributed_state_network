@@ -30,27 +30,27 @@ class RouterHandler(BaseHTTPRequestHandler):
     server: "RouterServer"
 
     def do_POST(self):
-        content_length = int(self.headers.get('Content-Length', 0))
-        body = self.rfile.read(content_length)
-        try:
-            data = json.loads(body.decode("utf-8"))
-        except json.JSONDecodeError:
-            _send_403(self, "Invalid JSON")
-            return
-
         if self.server.router.shutting_down:
             _respond_bytes(self, b'DOWN')
+        
+        content_length = int(self.headers.get('Content-Length', 0))
+        try:
+            body = self.server.router.decrypt_data(self.rfile.read(content_length))
+        except Exception as e:
+            self.server.router.logger.error(f"{self.path}: Error decrypting data, {e}")
+            _respond_bytes(b'Not Authorized')
+            return
 
-        elif self.path == "/bootstrap":
-            res = self.server.router.handle_bootstrap(data)
-            _respond_bytes(self, res)
+        if self.path == "/bootstrap":
+            res = self.server.router.handle_bootstrap(body)
+            _respond_bytes(self, self.server.router.encrypt_data(res))
 
         elif self.path == "/hello":
-            res = self.server.router.handle_hello(data)
-            _respond_bytes(self, res)
+            res = self.server.router.handle_hello(body)
+            _respond_bytes(self, self.server.router.encrypt_data(res))
 
         elif self.path == "/update":
-            Thread(target=self.server.router.handle_update, args=(data, )).start()
+            Thread(target=self.server.router.handle_update, args=(body, )).start()
             _respond_bytes(self, b'')
 
         elif self.path == "/ping":

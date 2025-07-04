@@ -39,6 +39,9 @@ class CertManager:
             return False
         return cert == self.read_cert(router_id)
 
+    def my_cert(self) -> bytes:
+        return self.read_cert(self.router_id)
+
     @staticmethod
     def generate_certs(router_id: str):
         if os.path.exists(f'certs/{router_id}/{router_id}.key'):
