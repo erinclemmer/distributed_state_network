@@ -1,8 +1,8 @@
 import time
 from typing import Dict, Tuple
 
-class RouterState:
-    router_id: str
+class NodeState:
+    node_id: str
     ip: str
     port: int
     version: str
@@ -11,13 +11,13 @@ class RouterState:
 
     def __init__(
             self, 
-            router_id: str, 
+            node_id: str, 
             con: Tuple[str, int],
             version: str,
             last_update: float,
             state: Dict,
         ):
-        self.router_id = router_id
+        self.node_id = node_id
         self.ip = con[0]
         self.port = con[1]
         self.version = version
@@ -30,7 +30,7 @@ class RouterState:
     
     def to_dict(self):
         return {
-            "router_id": self.router_id,
+            "node_id": self.node_id,
             "ip": self.ip,
             "port": self.port,
             "version": self.version,
@@ -40,8 +40,8 @@ class RouterState:
 
     @staticmethod
     def from_dict(data):
-        return RouterState(
-            data["router_id"],
+        return NodeState(
+            data["node_id"],
             (data["ip"], data["port"]),
             data["version"],
             data["last_update"],

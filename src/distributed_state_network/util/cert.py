@@ -4,55 +4,55 @@ import logging
 from distributed_state_network.util.https import generate_cert
 
 class CertManager:
-    def __init__(self, router_id: str):
-        self.router_id = router_id
+    def __init__(self, node_id: str):
+        self.node_id = node_id
 
-    def write_cert(self, router_id: str, cert: bytes):
+    def write_cert(self, node_id: str, cert: bytes):
         if not os.path.exists('certs'):
             os.mkdir('certs')
-        if not os.path.exists(f'certs/{router_id}'):
-            os.mkdir(f'certs/{router_id}')
-        with open(f'certs/{self.router_id}/{router_id}.crt', 'wb') as f:
+        if not os.path.exists(f'certs/{node_id}'):
+            os.mkdir(f'certs/{node_id}')
+        with open(f'certs/{self.node_id}/{node_id}.crt', 'wb') as f:
             f.write(cert)
 
-    def read_cert(self, router_id: str) -> bytes:
-        if not os.path.exists(f'certs/{self.router_id}/{router_id}.crt'):
+    def read_cert(self, node_id: str) -> bytes:
+        if not os.path.exists(f'certs/{self.node_id}/{node_id}.crt'):
             return b''
-        with open(f'certs/{self.router_id}/{router_id}.crt', 'rb') as f:
+        with open(f'certs/{self.node_id}/{node_id}.crt', 'rb') as f:
             return f.read()
 
-    def has_cert(self, router_id: str) -> bool:
-        return os.path.exists(f'certs/{self.router_id}/{router_id}.crt')
+    def has_cert(self, node_id: str) -> bool:
+        return os.path.exists(f'certs/{self.node_id}/{node_id}.crt')
 
-    def ensure_cert(self, router_id: str, cert: bytes):
-        if self.has_cert(router_id):
-            if not self.verify_cert(router_id, cert):
-                raise Exception(f"[{self.router_id}] could not verify certificate from {router_id}")
+    def ensure_cert(self, node_id: str, cert: bytes):
+        if self.has_cert(node_id):
+            if not self.verify_cert(node_id, cert):
+                raise Exception(f"[{self.node_id}] could not verify certificate from {node_id}")
         else:
-            self.write_cert(router_id, cert)
+            self.write_cert(node_id, cert)
 
-    def cert_path(self, router_id: str):
-        return f"certs/{self.router_id}/{router_id}.crt"
+    def cert_path(self, node_id: str):
+        return f"certs/{self.node_id}/{node_id}.crt"
 
-    def verify_cert(self, router_id: str, cert: bytes):
-        if not self.has_cert(router_id):
+    def verify_cert(self, node_id: str, cert: bytes):
+        if not self.has_cert(node_id):
             return False
-        return cert == self.read_cert(router_id)
+        return cert == self.read_cert(node_id)
 
     def my_cert(self) -> bytes:
-        return self.read_cert(self.router_id)
+        return self.read_cert(self.node_id)
 
     @staticmethod
-    def generate_certs(router_id: str):
-        if os.path.exists(f'certs/{router_id}/{router_id}.key'):
+    def generate_certs(node_id: str):
+        if os.path.exists(f'certs/{node_id}/{node_id}.key'):
             return
-        logging.getLogger("LM NET: " + router_id).info("Generating self-signed certificate ...")
+        logging.getLogger("LM NET: " + node_id).info("Generating self-signed certificate ...")
         cert_bytes, key_bytes = generate_cert()
         if not os.path.exists('certs'):
             os.mkdir('certs')
-        if not os.path.exists(f'certs/{router_id}'):
-            os.mkdir(f'certs/{router_id}')
-        with open(f'certs/{router_id}/{router_id}.crt', 'wb') as f:
+        if not os.path.exists(f'certs/{node_id}'):
+            os.mkdir(f'certs/{node_id}')
+        with open(f'certs/{node_id}/{node_id}.crt', 'wb') as f:
             f.write(cert_bytes)
-        with open(f'certs/{router_id}/{router_id}.key', 'wb') as f:
+        with open(f'certs/{node_id}/{node_id}.key', 'wb') as f:
             f.write(key_bytes)

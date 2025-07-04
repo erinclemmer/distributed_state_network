@@ -6,8 +6,8 @@ from typing import Tuple
 from threading import Thread
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-from distributed_state_network.router import Router
-from distributed_state_network.objects.config import RouterConfig
+from distributed_state_network.node import Node
+from distributed_state_network.objects.config import NodeConfig
 from distributed_state_network.util.aes import generate_aes_key
 from distributed_state_network.util import stop_thread
 
@@ -28,31 +28,31 @@ def _respond_bytes(handler: BaseHTTPRequestHandler, data: bytes):
     handler.wfile.write(data)
     handler.wfile.flush()
 
-class RouterHandler(BaseHTTPRequestHandler):
-    server: "RouterServer"
+class NodeHandler(BaseHTTPRequestHandler):
+    server: "NodeServer"
 
     def do_POST(self):
-        if self.server.router.shutting_down:
+        if self.server.node.shutting_down:
             _respond_bytes(self, b'DOWN')
         
         content_length = int(self.headers.get('Content-Length', 0))
         try:
-            body = self.server.router.decrypt_data(self.rfile.read(content_length))
+            body = self.server.node.decrypt_data(self.rfile.read(content_length))
         except Exception as e:
-            self.server.router.logger.error(f"{self.path}: Error decrypting data, {e}")
+            self.server.node.logger.error(f"{self.path}: Error decrypting data, {e}")
             _respond_bytes(b'Not Authorized')
             return
 
         if self.path == "/bootstrap":
-            res = self.server.router.handle_bootstrap(body)
-            _respond_bytes(self, self.server.router.encrypt_data(res))
+            res = self.server.node.handle_bootstrap(body)
+            _respond_bytes(self, self.server.node.encrypt_data(res))
 
         elif self.path == "/hello":
-            res = self.server.router.handle_hello(body)
-            _respond_bytes(self, self.server.router.encrypt_data(res))
+            res = self.server.node.handle_hello(body)
+            _respond_bytes(self, self.server.node.encrypt_data(res))
 
         elif self.path == "/update":
-            Thread(target=self.server.router.handle_update, args=(body, )).start()
+            Thread(target=self.server.node.handle_update, args=(body, )).start()
             _respond_bytes(self, b'')
 
         elif self.path == "/ping":
@@ -64,19 +64,19 @@ class RouterHandler(BaseHTTPRequestHandler):
 def serve(httpd):
     httpd.serve_forever()
 
-class RouterServer(HTTPServer):
+class NodeServer(HTTPServer):
     def __init__(
         self, 
-        config: RouterConfig
+        config: NodeConfig
     ):
-        super().__init__(("127.0.0.1", config.port), RouterHandler)
-        self.router = Router(config, VERSION)
+        super().__init__(("127.0.0.1", config.port), NodeHandler)
+        self.node = Node(config, VERSION)
         self.config = config
-        self.router.logger.info(f'Started Router on port {config.port}')
+        self.node.logger.info(f'Started Node on port {config.port}')
 
     def stop(self):
         self.shutdown()
-        self.router.shutting_down = True
+        self.node.shutting_down = True
         self.socket.close()
         stop_thread(self.thread)
 
@@ -87,25 +87,25 @@ class RouterServer(HTTPServer):
             f.write(key)
 
     @staticmethod 
-    def start(config: RouterConfig) -> Tuple[Thread, 'RouterServer']:
-        rtr = RouterServer(config)
+    def start(config: NodeConfig) -> Tuple[Thread, 'NodeServer']:
+        n = NodeServer(config)
         ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-        cert_path = rtr.router.cert_manager.cert_path(config.router_id)
+        cert_path = n.node.cert_manager.cert_path(config.node_id)
         ssl_context.load_cert_chain(
             certfile=cert_path,
             keyfile=cert_path.replace(".crt", ".key")
         )
-        rtr.socket = ssl_context.wrap_socket(rtr.socket, server_side=True)
-        rtr.thread = threading.Thread(target=serve, args=(rtr, ))
-        rtr.thread.start()
+        n.socket = ssl_context.wrap_socket(n.socket, server_side=True)
+        n.thread = threading.Thread(target=serve, args=(n, ))
+        n.thread.start()
 
         if config.bootstrap_nodes is not None and len(config.bootstrap_nodes) > 0:
-            for n in config.bootstrap_nodes:
+            for bs in config.bootstrap_nodes:
                 try:
-                    rtr.router.bootstrap(n)
+                    n.node.bootstrap(bs)
                     break # Throws exception if connection is not made
                 except Exception as e:
                     print(e)
 
-        return rtr
+        return n
 
