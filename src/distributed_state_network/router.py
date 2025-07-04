@@ -33,13 +33,11 @@ class Router:
         self.cert_manager = CertManager(config.router_id)
         CertManager.generate_certs(config.router_id)
         self.logger = logging.getLogger("DSN: " + config.router_id)
-        self.logger.setLevel(0)
         if not os.path.exists(config.aes_key_file):
             raise Exception(f"Could not find aes key file in {config.aes_key_file}")
         
         self.router_states[self.config.router_id] = RouterState(self.config.router_id, ("127.0.0.1", config.port), protocol_version, time.time(), { })
         threading.Thread(target=self.network_tick).start()
-        self.logger.info(f"Started router on port {self.config.port}")
 
     def get_aes_key(self):
         with open(self.config.aes_key_file, 'rb') as f:

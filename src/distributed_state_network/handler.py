@@ -1,6 +1,7 @@
 import ssl
 import threading
 import json
+import logging
 from typing import Tuple
 from threading import Thread
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -11,6 +12,7 @@ from distributed_state_network.util.aes import generate_aes_key
 from distributed_state_network.util import stop_thread
 
 VERSION = "0.0.1"
+logging.basicConfig(level=logging.INFO)
 
 def _send_403(handler: BaseHTTPRequestHandler, message: str):
     handler.send_response(403)
