@@ -14,13 +14,6 @@ from distributed_state_network.util import stop_thread
 VERSION = "0.0.1"
 logging.basicConfig(level=logging.INFO)
 
-def _send_403(handler: BaseHTTPRequestHandler, message: str):
-    handler.send_response(403)
-    handler.send_header("Content-Type", "application/json")
-    handler.end_headers()
-    handler.wfile.write(message.encode())
-    handler.wfile.flush()
-
 def _respond_bytes(handler: BaseHTTPRequestHandler, data: bytes):
     handler.send_response(200)
     handler.send_header("Content-Type", "application/octet-stream")
@@ -87,7 +80,7 @@ class NodeServer(HTTPServer):
             f.write(key)
 
     @staticmethod 
-    def start(config: NodeConfig) -> Tuple[Thread, 'NodeServer']:
+    def start(config: NodeConfig) -> 'NodeServer':
         n = NodeServer(config)
         ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         cert_path = n.node.cert_manager.cert_path(config.node_id)
@@ -108,4 +101,3 @@ class NodeServer(HTTPServer):
                     print(e)
 
         return n
-
