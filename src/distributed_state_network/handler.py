@@ -21,6 +21,10 @@ def respond_bytes(handler: BaseHTTPRequestHandler, data: bytes):
     handler.wfile.write(data)
     handler.wfile.flush()
 
+def respond_404(handler: BaseHTTPRequestHandler):
+    handler.send_response(404)
+    handler.end_headers()
+
 class DSNodeHandler(BaseHTTPRequestHandler):
     server: "NodeServer"
 
@@ -41,8 +45,12 @@ class DSNodeHandler(BaseHTTPRequestHandler):
             respond_bytes(self, self.server.node.encrypt_data(res))
 
         elif self.path == "/hello":
-            res = self.server.node.handle_hello(body)
-            respond_bytes(self, self.server.node.encrypt_data(res))
+            try:
+                res = self.server.node.handle_hello(body)
+                respond_bytes(self, self.server.node.encrypt_data(res))
+            except Exception as e:
+                self.server.node.logger.error(e)
+                respond_bytes(self, e.args[0].encode('utf-8'))
 
         elif self.path == "/update":
             Thread(target=self.server.node.handle_update, args=(body, )).start()
@@ -50,6 +58,9 @@ class DSNodeHandler(BaseHTTPRequestHandler):
 
         elif self.path == "/ping":
             respond_bytes(self, b'')
+
+        else:
+            respond_404(self)
 
     def log_message(self, format, *args):
         pass

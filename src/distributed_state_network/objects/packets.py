@@ -72,5 +72,8 @@ class HelloPacket:
         bts = ByteHelper(data)
         node_id = bts.read_string()
         https_certificate = bts.read_bytes()
+
+        if node_id == '' or https_certificate == b'':
+            raise Exception("Bad Request Data")
         
         return HelloPacket(node_id, https_certificate)

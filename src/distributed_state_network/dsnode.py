@@ -81,27 +81,32 @@ class DSNode:
             if retries < 2:
                 self.send_request(con, path, payload, verify, retries + 1)
             else:
-                raise RequestException(f'!!ERROR!! {path.upper()} => {con[0]}:{con[1]} (no response)')
+                raise RequestException(f'{path.upper()} => {con[0]}:{con[1]} (no response)')
+        return self.parse_response(con, path, res)
+
+    def parse_response(self, con: Tuple[str, int], path: str, res: requests.Response) -> Tuple[requests.Response, bytes]:
         if res.status_code != 200:
-            raise RequestException(f'!!ERROR!! {path.upper()} => {con[0]}:{con[1]} (status code {res.status_code})')
+            raise RequestException(f'{path.upper()} => {con[0]}:{con[1]} (status code {res.status_code})')
         
-        possible_responses = [
+        possible_fail_responses = [
             b'DOWN',
             b'Not Authorized',
-            b'Bad Request Data'
+            b'Bad Request Data',
+            b'Bad Version'
         ]
 
-        if res.content in possible_responses:
-            raise RequestException(f'!!ERROR!! {path.upper()} => {con[0]}:{con[1]} ({res.content})')
+        if res.content in possible_fail_responses:
+            raise RequestException(f'{path.upper()} => {con[0]}:{con[1]} ({res.content})')
         
         decrypted_data = b''
         if len(res.content) > 0:
             try:
                 decrypted_data = self.decrypt_data(res.content)
             except Exception as e:
-                raise RequestException(f'!!ERROR!! {path.upper()} => {con[0]}:{con[1]} (cannot decrypt response)')
+                raise RequestException(f'{path.upper()} => {con[0]}:{con[1]} (cannot decrypt response)')
 
         return res, decrypted_data
+
 
     def encrypt_data(self, data: bytes) -> bytes:
         return aes_encrypt(self.get_aes_key(), data)
@@ -113,21 +118,12 @@ class DSNode:
         self.logger.info(f"HELLO => {node_id}")
 
         payload = HelloPacket(self.config.node_id, self.cert_manager.my_cert()).to_bytes()
-        
-        try:
-            res, content = self.send_request_to_node(node_id, 'hello', payload, False)
-        except Exception as e:
-            raise RequestException(f"!!ERROR!! HELLO => {node_id} ({e})")
+        res, content = self.send_request_to_node(node_id, 'hello', payload, False)
 
         self.cert_manager.ensure_cert(node_id, content)
 
     def handle_hello(self, data: bytes) -> bytes:
-        try:
-            pkt = HelloPacket.from_bytes(data)
-        except Exception as e:
-            self.logger.error(e)
-            return b'Bad Request Data'
-        
+        pkt = HelloPacket.from_bytes(data)
         self.cert_manager.ensure_cert(pkt.node_id, pkt.https_certificate)
 
         return self.cert_manager.my_cert()
@@ -136,7 +132,7 @@ class DSNode:
         try:
             self.send_request_to_node(node_id, 'ping', b' ', verify=self.cert_manager.cert_path(node_id))
         except Exception as e:
-            raise RequestException(f'!!ERROR!! PING => {node_id}: {e}')
+            raise RequestException(f'PING => {node_id}: {e}')
 
     def send_bootstrap(self, con: Tuple[str, int]) -> str:
         cert_bytes = self.cert_manager.read_cert(self.config.node_id)
@@ -145,11 +141,7 @@ class DSNode:
         name = f'{con[0]}:{con[1]}'
         self.logger.info(f"BOOTSTRAP => {name}")
         
-        try:
-            res, content = self.send_request(con, 'bootstrap', payload, False)
-        except Exception as e:
-            raise RequestException(f'!!ERROR!! BOOTSTRAP => {name} {e}')
-       
+        res, content = self.send_request(con, 'bootstrap', payload, False)
         pkt = BootstrapPacket.from_bytes(content)
     
         self.node_states = pkt.state_data
@@ -162,12 +154,12 @@ class DSNode:
             pkt = BootstrapPacket.from_bytes(data)
         except Exception as e:
             self.logger.error(f'Bad packet: {e}')
-            return b'Bad Packet'
+            return b'Bad Request Data'
 
         if pkt.version != self.my_version():
-            msg = f"!!ERROR!! BOOTSTRAP => {state.node_id} (Version mismatch {state.version} != {self.my_version()})"
+            msg = f"BOOTSTRAP => {pkt.node_id} (Version mismatch \"{pkt.version}\" != \"{self.my_version()}\")"
             self.logger.error(msg)
-            return f'Version mismatch {state.version} != {self.my_version()}'.encode('utf-8')
+            return b'Bad Version'
 
         self.cert_manager.ensure_cert(pkt.node_id, pkt.https_certificate)
         self.node_states[pkt.node_id] = pkt.state_data[pkt.node_id]
@@ -176,14 +168,15 @@ class DSNode:
         return BootstrapPacket(self.my_version(), self.config.node_id, my_cert, self.node_states).to_bytes()
 
     def send_update(self, node_id: str):
-        try:
-            self.logger.info(f"UPDATE => {node_id}")
-            self.send_request_to_node(node_id, 'update', self.my_state().to_bytes(), self.cert_manager.cert_path(node_id))
-        except Exception as e:
-            self.logger.error(f"!!ERROR!! UPDATE => {node_id}: {e}")
+        self.logger.info(f"UPDATE => {node_id}")
+        self.send_request_to_node(node_id, 'update', self.my_state().to_bytes(), self.cert_manager.cert_path(node_id))
 
     def handle_update(self, data: bytes):
-        pkt = NodeState.from_bytes(data)
+        try:
+            pkt = NodeState.from_bytes(data)
+        except Exception as e:
+            self.logger.error(f'Bad Packet: {e}')
+            return b'Bad Request Data'
         
         if pkt.node_id == self.config.node_id:
             return # ignore if we accidentally sent an update to ourselves

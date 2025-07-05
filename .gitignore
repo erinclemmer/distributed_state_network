@@ -4,3 +4,5 @@ certs/
 .vscode/
 test.key
 .coverage
+count.py
+py_line_count_history.jsonl

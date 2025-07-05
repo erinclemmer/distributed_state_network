@@ -145,5 +145,41 @@ class TestNode(unittest.TestCase):
         res = requests.post(f"https://127.0.0.1:{n.config.port}/ping", data=encrypted_data, verify=False)
         self.assertEqual(res.content, b'')
 
+    def test_version_matching(self):
+        bootstrap = spawn_node("bootstrap")
+        bootstrap.node.node_states["bootstrap"].version = "bad_version"
+        try:
+            connector = spawn_node("connector", [bootstrap.node.my_con()])
+            self.fail("Should throw error when connecting")
+        except Exception as e:
+            print(e)
+
+    def test_status_code(self):
+        bootstrap = spawn_node("bootstrap")
+        connector = spawn_node("connector", [bootstrap.node.my_con()])
+        try:
+            connector.node.send_request_to_node("bootstrap", "bad-path", b'', False)
+            self.fail("Should error if a 404 was received")
+        except Exception as e:
+            print(e)
+
+    def test_bad_req_data(self):
+        bootstrap = spawn_node("bootstrap")
+        connector = spawn_node("connector", [bootstrap.node.my_con()])
+        try: 
+            connector.node.send_request_to_node("bootstrap", "hello", b'TEST', False)
+            self.fail("Should throw error for malformed data")
+        except Exception as e:
+            print(e)
+
+    def test_decrypt_response(self):
+        n = spawn_node("node")
+        sample_response = requests.get("https://google.com")
+        try:
+            n.node.parse_response(("test", 3000), "test", sample_response)
+            self.fail("Should throw error if can't decrypt response")
+        except Exception as e:
+            print(e)
+
 if __name__ == "__main__":
     unittest.main()
