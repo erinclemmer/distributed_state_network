@@ -170,11 +170,13 @@ class DSNode:
     def handle_update(self, data: bytes):
         pkt = NodeState.from_bytes(data)
         
+        # ignore if we accidentally sent an update to ourselves
         if pkt.node_id == self.config.node_id:
-            return # ignore if we accidentally sent an update to ourselves
+            raise Exception("Received update for our own node")
         
+        # don't use packets older than last update
         if pkt.node_id in self.node_states and self.node_states[pkt.node_id].last_update > pkt.last_update:
-            return # don't use packets older than last update
+            raise Exception("Received outdated update packet")
         
         if not pkt.node_id in self.node_states:
             self.node_states[pkt.node_id] = pkt

@@ -13,6 +13,7 @@ from typing import List
 sys.path.append(os.path.join(os.path.dirname(__file__), './src'))
 
 from distributed_state_network import DSNodeServer, Endpoint, DSNodeConfig
+from distributed_state_network.objects.state import NodeState
 
 current_port = 8000
 nodes = []
@@ -180,6 +181,27 @@ class TestNode(unittest.TestCase):
             self.fail("Should throw error if can't decrypt response")
         except Exception as e:
             print(e)
+
+    def test_bad_update(self):
+        bootstrap = spawn_node("bootstrap")
+        connector = spawn_node("connector", [bootstrap.node.my_con()])
+
+        state = NodeState("bootstrap", bootstrap.node.my_con(), bootstrap.node.my_version(), time.time(), { })
+        try: 
+            bootstrap.node.handle_update(state.to_bytes())
+            self.fail("Node should not handle updates for itself")
+        except Exception as e:
+            print(e)
+            self.assertEqual(e.args[0], "Received update for our own node")
+        time_before = time.time() - 10
+        state = NodeState("connector", bootstrap.node.my_con(), bootstrap.node.my_version(), time_before, { })
+        try: 
+            bootstrap.node.handle_update(state.to_bytes())
+            self.fail("Node should only accept update packets that are newer than the version we have")
+        except Exception as e:
+            print(e)
+            self.assertEqual(e.args[0], "Received outdated update packet")
+    
 
 if __name__ == "__main__":
     unittest.main()

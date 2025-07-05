@@ -26,7 +26,7 @@ class ByteHelper:
         return bytes_to_int(self.bts.read(4))
 
     def read_float(self):
-        return bytes_to_float(self.bts.read(4))
+        return bytes_to_float(self.bts.read(8))
 
     def read_bytes(self):
         l = bytes_to_int(self.bts.read(4))

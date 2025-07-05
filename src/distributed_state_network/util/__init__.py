@@ -11,10 +11,10 @@ def bytes_to_int(b: bytes) -> int:
     return int.from_bytes(b, 'little', signed=False)
 
 def float_to_bytes(f: float) -> bytes:
-    return struct.pack("<f", f)
+    return struct.pack(">d", f)
 
 def bytes_to_float(b: bytes) -> float:
-    return struct.unpack("<f", b)[0]
+    return struct.unpack(">d", b)[0]
 
 def get_byte_hash(data: bytes) -> bytes:
     return sha256(data)
