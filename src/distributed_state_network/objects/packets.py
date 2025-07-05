@@ -49,6 +49,9 @@ class BootstrapPacket:
             key = bts.read_string()
             state_data[key] = NodeState.from_bytes(bts.read_bytes())
         
+        if version == '' or node_id == '' or https_certificate == b'':
+            raise Exception("Bad Request Data")
+
         return BootstrapPacket(version, node_id, https_certificate, state_data)
         
 

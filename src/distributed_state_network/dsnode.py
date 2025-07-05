@@ -92,7 +92,7 @@ class DSNode:
             b'DOWN',
             b'Not Authorized',
             b'Bad Request Data',
-            b'Bad Version'
+            b'Version Mismatch'
         ]
 
         if res.content in possible_fail_responses:
@@ -150,16 +150,12 @@ class DSNode:
         return pkt.node_id
 
     def handle_bootstrap(self, data: bytes) -> bytes:
-        try:
-            pkt = BootstrapPacket.from_bytes(data)
-        except Exception as e:
-            self.logger.error(f'Bad packet: {e}')
-            return b'Bad Request Data'
+        pkt = BootstrapPacket.from_bytes(data)
 
         if pkt.version != self.my_version():
             msg = f"BOOTSTRAP => {pkt.node_id} (Version mismatch \"{pkt.version}\" != \"{self.my_version()}\")"
             self.logger.error(msg)
-            return b'Bad Version'
+            raise Exception("Version Mismatch")
 
         self.cert_manager.ensure_cert(pkt.node_id, pkt.https_certificate)
         self.node_states[pkt.node_id] = pkt.state_data[pkt.node_id]
@@ -172,11 +168,7 @@ class DSNode:
         self.send_request_to_node(node_id, 'update', self.my_state().to_bytes(), self.cert_manager.cert_path(node_id))
 
     def handle_update(self, data: bytes):
-        try:
-            pkt = NodeState.from_bytes(data)
-        except Exception as e:
-            self.logger.error(f'Bad Packet: {e}')
-            return b'Bad Request Data'
+        pkt = NodeState.from_bytes(data)
         
         if pkt.node_id == self.config.node_id:
             return # ignore if we accidentally sent an update to ourselves

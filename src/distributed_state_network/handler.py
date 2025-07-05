@@ -2,7 +2,7 @@ import ssl
 import threading
 import json
 import logging
-from typing import Tuple
+from typing import Tuple, Callable
 from threading import Thread
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
@@ -25,6 +25,17 @@ def respond_404(handler: BaseHTTPRequestHandler):
     handler.send_response(404)
     handler.end_headers()
 
+def graceful_fail(httpd: BaseHTTPRequestHandler, body: bytes, fn: Callable):
+    try:
+        fn_result = fn(body)
+        if fn_result is not None:
+            respond_bytes(httpd, httpd.server.node.encrypt_data(fn_result))
+        else:
+            respond_bytes(httpd, b'')
+    except Exception as e:
+        httpd.server.node.logger.error(e)
+        respond_bytes(httpd, e.args[0].encode('utf-8'))
+
 class DSNodeHandler(BaseHTTPRequestHandler):
     server: "NodeServer"
 
@@ -41,20 +52,13 @@ class DSNodeHandler(BaseHTTPRequestHandler):
             return
 
         if self.path == "/bootstrap":
-            res = self.server.node.handle_bootstrap(body)
-            respond_bytes(self, self.server.node.encrypt_data(res))
+            graceful_fail(self, body, self.server.node.handle_bootstrap)
 
         elif self.path == "/hello":
-            try:
-                res = self.server.node.handle_hello(body)
-                respond_bytes(self, self.server.node.encrypt_data(res))
-            except Exception as e:
-                self.server.node.logger.error(e)
-                respond_bytes(self, e.args[0].encode('utf-8'))
+            graceful_fail(self, body, self.server.node.handle_hello)
 
         elif self.path == "/update":
-            Thread(target=self.server.node.handle_update, args=(body, )).start()
-            respond_bytes(self, b'')
+            graceful_fail(self, body, self.server.node.handle_update)
 
         elif self.path == "/ping":
             respond_bytes(self, b'')
