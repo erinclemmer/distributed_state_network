@@ -7,6 +7,7 @@ import random
 import logging
 import unittest
 import threading
+import requests
 from typing import List
 
 sys.path.append(os.path.join(os.path.dirname(__file__), './src'))
@@ -127,6 +128,22 @@ class TestNode(unittest.TestCase):
         self.assertEqual("bar", bootstrap.node.read_data("connector", "foo"))
         bootstrap.node.update_data("bar", "baz")
         self.assertEqual("baz", connector.node.read_data("bootstrap", "bar"))
+
+    def test_bad_aes_key(self):
+        try:
+            DSNodeServer.start(DSNodeConfig("bad key test", 8080, "bad.key", []))
+            self.fail("Should throw error before this")
+        except Exception as e:
+            print(e)
+
+    def test_authorization(self):
+        n = spawn_node("node")
+        res = requests.post(f"https://127.0.0.1:{n.config.port}/ping", data=b'TEST', verify=False)
+        self.assertEqual(res.content, b'Not Authorized')
+
+        encrypted_data = n.node.encrypt_data(b'TEST')
+        res = requests.post(f"https://127.0.0.1:{n.config.port}/ping", data=encrypted_data, verify=False)
+        self.assertEqual(res.content, b'')
 
 if __name__ == "__main__":
     unittest.main()

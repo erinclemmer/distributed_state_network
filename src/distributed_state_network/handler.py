@@ -33,7 +33,7 @@ class DSNodeHandler(BaseHTTPRequestHandler):
             body = self.server.node.decrypt_data(self.rfile.read(content_length))
         except Exception as e:
             self.server.node.logger.error(f"{self.path}: Error decrypting data, {e}")
-            respond_bytes(b'Not Authorized')
+            respond_bytes(self, b'Not Authorized')
             return
 
         if self.path == "/bootstrap":

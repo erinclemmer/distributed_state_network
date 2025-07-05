@@ -60,19 +60,14 @@ class DSNode:
             if not node_id in self.node_states or node_id == self.config.node_id:
                 continue
             try:
-                try:
-                    if self.shutting_down:
-                        return
-                    self.send_ping(node_id)
-                except RequestException:
-                    if node_id in self.node_states: # double check if something has changed since the ping request started
-                        remove(node_id)
-            except ValueError:
-                pass
+                if self.shutting_down:
+                    return
+                self.send_ping(node_id)
+            except RequestException:
+                if node_id in self.node_states: # double check if something has changed since the ping request started
+                    remove(node_id)
 
     def send_request_to_node(self, node_id: str, path: str, payload: bytes, verify) -> Tuple[requests.Response, bytes]:
-        if node_id not in self.node_states:
-            raise Exception(f"cannot send {path} to unknown node id: {node_id}")
         ip, port = self.connection_from_node(node_id)
         return self.send_request((ip, port), path, payload, verify)
 
@@ -80,8 +75,6 @@ class DSNode:
         res = None
         try:
             res = requests.post(f'https://{con[0]}:{con[1]}/{path}', data=self.encrypt_data(payload), verify=verify, timeout=2)
-            if not res:
-                raise Exception("No response from server")
         except Exception as e:
             self.logger.error(e)
             time.sleep(1)
@@ -89,16 +82,17 @@ class DSNode:
                 self.send_request(con, path, payload, verify, retries + 1)
             else:
                 raise RequestException(f'!!ERROR!! {path.upper()} => {con[0]}:{con[1]} (no response)')
-        if not res:
-            raise RequestException(f'!!ERROR!! {path.upper()} => {con[0]}:{con[1]} (no response)')
         if res.status_code != 200:
             raise RequestException(f'!!ERROR!! {path.upper()} => {con[0]}:{con[1]} (status code {res.status_code})')
         
-        if res.content == b'DOWN':
-            raise RequestException(f'!!ERROR!! {path.upper()} => {con[0]}:{con[1]} (node is down)')
+        possible_responses = [
+            b'DOWN',
+            b'Not Authorized',
+            b'Bad Request Data'
+        ]
 
-        if res.content == b'Not Authorized':
-            raise RequestException(f'!!ERROR!! {path.upper()} => {con[0]}:{con[1]} (not authorized)')
+        if res.content in possible_responses:
+            raise RequestException(f'!!ERROR!! {path.upper()} => {con[0]}:{con[1]} ({res.content})')
         
         decrypted_data = b''
         if len(res.content) > 0:
@@ -132,7 +126,7 @@ class DSNode:
             pkt = HelloPacket.from_bytes(data)
         except Exception as e:
             self.logger.error(e)
-            return b'Not Authorized'
+            return b'Bad Request Data'
         
         self.cert_manager.ensure_cert(pkt.node_id, pkt.https_certificate)
 
