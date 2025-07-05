@@ -4,6 +4,7 @@ import ssl
 import time
 import ctypes
 import random
+import shutil
 import logging
 import unittest
 import threading
@@ -15,10 +16,13 @@ sys.path.append(os.path.join(os.path.dirname(__file__), './src'))
 from distributed_state_network import DSNodeServer, Endpoint, DSNodeConfig
 from distributed_state_network.objects.state import NodeState
 from distributed_state_network.objects.packets import HelloPacket, BootstrapPacket
+from distributed_state_network.util.aes import generate_aes_key
 
 current_port = 8000
 nodes = []
 
+if os.path.exists('certs'):
+    shutil.rmtree('certs')
 key_file = "src/distributed_state_network/test.key"
 
 if not os.path.exists(key_file):
@@ -275,6 +279,22 @@ class TestNode(unittest.TestCase):
             self.fail("Should throw error on bad parse")
         except Exception as e:
             print(e)
+
+        try:
+            NodeState.from_bytes(b'')
+            self.fail("Should throw error on bad parse")
+        except Exception as e:
+            print(e)
+
+        try:
+            NodeState.from_bytes(b'Random data')
+            self.fail("Should throw error on bad parse")
+        except Exception as e:
+            print(e)
+
+    def test_aes(self):
+        key = generate_aes_key()
+        self.assertEqual(32, len(key))
 
 if __name__ == "__main__":
     unittest.main()

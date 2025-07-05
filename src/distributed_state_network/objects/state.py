@@ -49,10 +49,11 @@ class NodeState:
         ip = bts.read_string()
         port = bts.read_int()
         version = bts.read_string()
-        last_update = bts.read_float()
-        state_data = json.loads(bts.read_string())
-
+        
         if node_id == '' or ip == '' or version == '':
             raise Exception("Bad Request Data")
+        
+        last_update = bts.read_float()
+        state_data = json.loads(bts.read_string())
 
         return NodeState(node_id, (ip, port), version, last_update, state_data)
