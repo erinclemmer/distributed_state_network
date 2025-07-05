@@ -14,6 +14,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), './src'))
 
 from distributed_state_network import DSNodeServer, Endpoint, DSNodeConfig
 from distributed_state_network.objects.state import NodeState
+from distributed_state_network.objects.packets import HelloPacket, BootstrapPacket
 
 current_port = 8000
 nodes = []
@@ -249,6 +250,31 @@ class TestNode(unittest.TestCase):
         self.assertTrue(len(config.bootstrap_nodes) > 0)
         self.assertEqual(config_dict["bootstrap_nodes"][0]["address"], config.bootstrap_nodes[0].address)
         self.assertEqual(config_dict["bootstrap_nodes"][0]["port"], config.bootstrap_nodes[0].port)
+
+    def test_bad_packets(self):
+        try:
+            BootstrapPacket.from_bytes(b'')
+            self.fail("Should throw error on bad parse")
+        except Exception as e:
+            print(e)
+
+        try:
+            BootstrapPacket.from_bytes(b'Random Data')
+            self.fail("Should throw error on bad parse")
+        except Exception as e:
+            print(e)
+
+        try:
+            HelloPacket.from_bytes(b'')
+            self.fail("Should throw error on bad parse")
+        except Exception as e:
+            print(e)
+
+        try:
+            HelloPacket.from_bytes(b'Random data')
+            self.fail("Should throw error on bad parse")
+        except Exception as e:
+            print(e)
 
 if __name__ == "__main__":
     unittest.main()
