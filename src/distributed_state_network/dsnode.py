@@ -52,21 +52,21 @@ class DSNode:
         threading.Thread(target=self.network_tick).start()
 
     def test_connections(self):
-        def remove(rtr_id: str):
-            if rtr_id in self.node_states:
-                del self.node_states[rtr_id]
-                self.logger.info(f"PING failed for {rtr_id}, disconnecting...")
-        for rtr_id in self.node_states.copy().keys():
-            if not rtr_id in self.node_states or rtr_id == self.config.node_id:
+        def remove(node_id: str):
+            if node_id in self.node_states:
+                del self.node_states[node_id]
+                self.logger.info(f"PING failed for {node_id}, disconnecting...")
+        for node_id in self.node_states.copy().keys():
+            if not node_id in self.node_states or node_id == self.config.node_id:
                 continue
             try:
                 try:
                     if self.shutting_down:
                         return
-                    self.send_ping(rtr_id)
+                    self.send_ping(node_id)
                 except RequestException:
-                    if rtr_id in self.node_states: # double check if something has changed since the ping request started
-                        remove(rtr_id)
+                    if node_id in self.node_states: # double check if something has changed since the ping request started
+                        remove(node_id)
             except ValueError:
                 pass
 

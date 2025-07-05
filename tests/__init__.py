@@ -24,10 +24,10 @@ if not os.path.exists(key_file):
 def serve(httpd):
     httpd.serve_forever()
 
-def spawn_node(rtr_id: str, bootstrap_nodes: List[Endpoint] = []):
+def spawn_node(node_id: str, bootstrap_nodes: List[Endpoint] = []):
     global current_port
     current_port += 1
-    n = DSNodeServer.start(DSNodeConfig(rtr_id, current_port, key_file, bootstrap_nodes))
+    n = DSNodeServer.start(DSNodeConfig(node_id, current_port, key_file, bootstrap_nodes))
     global nodes
     nodes.append(n)
     return n

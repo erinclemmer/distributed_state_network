@@ -72,9 +72,9 @@ class HelloPacket:
     def to_bytes(self):
         bts = BytesIO()
 
-        rtr_id = self.node_id.encode('utf-8')
-        bts.write(int_to_bytes(len(rtr_id)))
-        bts.write(rtr_id)
+        node_id = self.node_id.encode('utf-8')
+        bts.write(int_to_bytes(len(node_id)))
+        bts.write(node_id)
 
         bts.write(int_to_bytes(len(self.https_certificate)))
         bts.write(self.https_certificate)
@@ -86,9 +86,9 @@ class HelloPacket:
         bts = BytesIO(data)
 
         l = bytes_to_int(bts.read(4))
-        rtr_id = bts.read(l)
+        node_id = bts.read(l)
 
         l = bytes_to_int(bts.read(4))
         https_certificate = bts.read(l)
 
-        return HelloPacket(rtr_id, https_certificate)
+        return HelloPacket(node_id, https_certificate)
