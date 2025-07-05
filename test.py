@@ -341,5 +341,9 @@ class TestNode(unittest.TestCase):
         cm = CertManager('test')
         self.assertFalse(cm.verify_cert('test', b'BAD KEY'))
 
+    # TODO: Test https validation
+    # Ensure that if a node tries to connect with a previously known node id and a new certificate it is kicked off the network
+    # We should not be able to send an update to a node with a https certificate that does not match
+
 if __name__ == "__main__":
     unittest.main()

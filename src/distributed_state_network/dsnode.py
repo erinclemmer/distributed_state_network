@@ -75,6 +75,8 @@ class DSNode:
     def send_request(self, con: Endpoint, path: str, payload: bytes, verify, retries: int = 0) -> Tuple[requests.Response, bytes]:
         res = None
         try:
+            # Always send a ping first to throw an error if https validation does not work
+            requests.post(f'https://{con.to_string()}/ping', data=self.encrypt_data(payload), verify=verify, timeout=2)
             res = requests.post(f'https://{con.to_string()}/{path}', data=self.encrypt_data(payload), verify=verify, timeout=2)
         except Exception as e:
             self.logger.error(e)
