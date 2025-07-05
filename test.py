@@ -125,6 +125,9 @@ class TestNode(unittest.TestCase):
     def test_state(self):
         bootstrap = spawn_node("bootstrap")
         connector = spawn_node("connector", [bootstrap.node.my_con()])
+
+        self.assertEqual(None, bootstrap.node.read_data("connector", "foo"))
+
         connector.node.update_data("foo", "bar")
         self.assertEqual("bar", bootstrap.node.read_data("connector", "foo"))
         bootstrap.node.update_data("bar", "baz")
@@ -202,6 +205,30 @@ class TestNode(unittest.TestCase):
             print(e)
             self.assertEqual(e.args[0], "Received outdated update packet")
     
+
+    def test_bad_hello(self):
+        bootstrap = spawn_node("bootstrap")
+        connector_0 = spawn_node("connector-0", [bootstrap.node.my_con()])
+        connector_0.stop()
+        connector_1 = spawn_node("connector-1", [bootstrap.node.my_con()])
+        self.assertEqual(connector_1.node.peers(), ["bootstrap", "connector-1"])
+
+    def test_connection_from_node(self):
+        n0 = spawn_node("node-0")
+        n1 = spawn_node("node-1", [n0.node.my_con()])
+        _, port = n0.node.connection_from_node("node-1")
+        self.assertEqual(port, n1.config.port)
+        try:
+            n0.node.connection_from_node("test")
+            self.fail("Should throw error if it can't find a matching node")
+        except Exception as e:
+            print(e)
+
+    def test_get_certificate(self):
+        n = spawn_node("node")
+        self.assertEqual(n.node.public_key_file(), "certs/node/node.crt")
+        self.assertEqual(n.node.private_key_file(), "certs/node/node.key")
+        self.assertIsNone(n.node.get_certificate("Bad-Node"))
 
 if __name__ == "__main__":
     unittest.main()

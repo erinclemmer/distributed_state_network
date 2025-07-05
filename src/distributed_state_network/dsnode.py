@@ -218,12 +218,6 @@ class DSNode:
     def my_con(self) -> Tuple[str, int]:
         return self.connection_from_node(self.config.node_id)
 
-    def get_address(self, node_id: str) -> Tuple[str, int]:
-        return self.connection_from_node(node_id)
-
-    def my_port(self) -> int:
-        return self.my_state().port
-
     def read_data(self, node_id: str, key: str) -> Optional[str]:
         if key not in self.node_states[node_id].state_data.keys():
             return None
@@ -242,7 +236,4 @@ class DSNode:
         return self.get_certificate(self.config.node_id)
 
     def private_key_file(self) -> Optional[str]:
-        cert = self.get_certificate(self.config.node_id)
-        if cert is None:
-            return None
-        return cert.replace(".crt", ".key")
+        return self.get_certificate(self.config.node_id).replace(".crt", ".key")
