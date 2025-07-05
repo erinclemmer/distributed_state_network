@@ -2,7 +2,7 @@ import ssl
 import threading
 import json
 import logging
-from typing import Tuple, Callable
+from typing import Tuple, Callable, Dict
 from threading import Thread
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
@@ -72,12 +72,12 @@ def serve(httpd):
 class DSNodeServer(HTTPServer):
     def __init__(
         self, 
-        config: DSNodeConfig
+        config_dict: Dict
     ):
-        super().__init__(("127.0.0.1", config.port), DSNodeHandler)
-        self.node = DSNode(config, VERSION)
-        self.config = config
-        self.node.logger.info(f'Started DSNode on port {config.port}')
+        super().__init__(("127.0.0.1", config_dict["port"]), DSNodeHandler)
+        self.config = DSNodeConfig.from_dict(config_dict)
+        self.node = DSNode(self.config, VERSION)
+        self.node.logger.info(f'Started DSNode on port {self.config.port}')
 
     def stop(self):
         self.node.shutting_down = True
@@ -92,10 +92,10 @@ class DSNodeServer(HTTPServer):
             f.write(key)
 
     @staticmethod 
-    def start(config: DSNodeConfig) -> 'NodeServer':
-        n = DSNodeServer(config)
+    def start(config_dict: DSNodeConfig) -> 'NodeServer':
+        n = DSNodeServer(config_dict)
         ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-        cert_path = n.node.cert_manager.cert_path(config.node_id)
+        cert_path = n.node.cert_manager.cert_path(n.config.node_id)
         ssl_context.load_cert_chain(
             certfile=cert_path,
             keyfile=cert_path.replace(".crt", ".key")
@@ -104,10 +104,10 @@ class DSNodeServer(HTTPServer):
         n.thread = threading.Thread(target=serve, args=(n, ))
         n.thread.start()
 
-        if config.bootstrap_nodes is not None and len(config.bootstrap_nodes) > 0:
-            for bs in config.bootstrap_nodes:
+        if n.config.bootstrap_nodes is not None and len(n.config.bootstrap_nodes) > 0:
+            for bs in n.config.bootstrap_nodes:
                 try:
-                    n.node.bootstrap(bs)
+                    n.node.bootstrap(bs.to_json())
                     break # Throws exception if connection is not made
                 except Exception as e:
                     print(e)

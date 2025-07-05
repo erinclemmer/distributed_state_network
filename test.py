@@ -9,7 +9,7 @@ import logging
 import unittest
 import threading
 import requests
-from typing import List
+from typing import List, Dict
 
 sys.path.append(os.path.join(os.path.dirname(__file__), './src'))
 
@@ -34,10 +34,15 @@ if not os.path.exists(key_file):
 def serve(httpd):
     httpd.serve_forever()
 
-def spawn_node(node_id: str, bootstrap_nodes: List[Endpoint] = []):
+def spawn_node(node_id: str, bootstrap_nodes: List[Dict] = []):
     global current_port
     current_port += 1
-    n = DSNodeServer.start(DSNodeConfig(node_id, current_port, key_file, bootstrap_nodes))
+    n = DSNodeServer.start({
+        "node_id": node_id,
+        "port": current_port,
+        "aes_key_file": key_file,
+        "bootstrap_nodes": bootstrap_nodes
+    })
     global nodes
     nodes.append(n)
     return n
@@ -54,7 +59,7 @@ class TestNode(unittest.TestCase):
 
     def test_double(self):
         bootstrap = spawn_node("bootstrap")
-        connector = spawn_node("connector", [bootstrap.node.my_con()])
+        connector = spawn_node("connector", [bootstrap.node.my_con().to_json()])
         self.assertIn("connector", list(bootstrap.node.peers()))
         self.assertIn("bootstrap", list(bootstrap.node.peers()))
 
@@ -63,7 +68,7 @@ class TestNode(unittest.TestCase):
 
     def test_many(self):
         bootstrap = spawn_node("bootstrap")
-        connectors = [spawn_node(f"node-{i}", [bootstrap.node.my_con()]) for i in range(0, 10)]
+        connectors = [spawn_node(f"node-{i}", [bootstrap.node.my_con().to_json()]) for i in range(0, 10)]
 
         boot_peers = list(bootstrap.node.peers())
 
@@ -77,11 +82,11 @@ class TestNode(unittest.TestCase):
     def test_multi_bootstrap(self):
         bootstraps = [spawn_node(f"bootstrap-{i}") for i in range(0, 3)]
         for i in range(1, len(bootstraps)):
-            bootstraps[i].node.bootstrap(bootstraps[i-1].node.my_con())
+            bootstraps[i].node.bootstrap(bootstraps[i-1].node.my_con().to_json())
         
         connectors = []
         for bs in bootstraps:
-            new_connectors = [spawn_node(f"node-{i}", [bs.node.my_con()]) for i in range(len(connectors), len(connectors) + 3)]
+            new_connectors = [spawn_node(f"node-{i}", [bs.node.my_con().to_json()]) for i in range(len(connectors), len(connectors) + 3)]
         
             connectors.extend(new_connectors)
         
@@ -102,7 +107,7 @@ class TestNode(unittest.TestCase):
 
     def test_reconnect(self):
         bootstrap = spawn_node("bootstrap")
-        connector = spawn_node("connector", [bootstrap.node.my_con()])
+        connector = spawn_node("connector", [bootstrap.node.my_con().to_json()])
         self.assertIn(connector.config.node_id, bootstrap.node.peers())
         connector.stop()
         time.sleep(10)
@@ -116,7 +121,7 @@ class TestNode(unittest.TestCase):
         connectors = []
         network_labels = ["bootstrap"]
         for i in range(5):
-            new_connectors = [spawn_node(f"node-{i}", [bootstrap.node.my_con()]) for i in range(len(connectors), len(connectors) + 5)]
+            new_connectors = [spawn_node(f"node-{i}", [bootstrap.node.my_con().to_json()]) for i in range(len(connectors), len(connectors) + 5)]
             connectors.extend(new_connectors)
             for c in new_connectors:
                 network_labels.append(c.config.node_id)
@@ -132,7 +137,7 @@ class TestNode(unittest.TestCase):
 
     def test_state(self):
         bootstrap = spawn_node("bootstrap")
-        connector = spawn_node("connector", [bootstrap.node.my_con()])
+        connector = spawn_node("connector", [bootstrap.node.my_con().to_json()])
 
         self.assertEqual(None, bootstrap.node.read_data("connector", "foo"))
 
@@ -161,14 +166,14 @@ class TestNode(unittest.TestCase):
         bootstrap = spawn_node("bootstrap")
         bootstrap.node.node_states["bootstrap"].version = "bad_version"
         try:
-            connector = spawn_node("connector", [bootstrap.node.my_con()])
+            connector = spawn_node("connector", [bootstrap.node.my_con().to_json()])
             self.fail("Should throw error when connecting")
         except Exception as e:
             print(e)
 
     def test_status_code(self):
         bootstrap = spawn_node("bootstrap")
-        connector = spawn_node("connector", [bootstrap.node.my_con()])
+        connector = spawn_node("connector", [bootstrap.node.my_con().to_json()])
         try:
             connector.node.send_request_to_node("bootstrap", "bad-path", b'', False)
             self.fail("Should error if a 404 was received")
@@ -177,7 +182,7 @@ class TestNode(unittest.TestCase):
 
     def test_bad_req_data(self):
         bootstrap = spawn_node("bootstrap")
-        connector = spawn_node("connector", [bootstrap.node.my_con()])
+        connector = spawn_node("connector", [bootstrap.node.my_con().to_json()])
         try: 
             connector.node.send_request_to_node("bootstrap", "hello", b'TEST', False)
             self.fail("Should throw error for malformed data")
@@ -195,7 +200,7 @@ class TestNode(unittest.TestCase):
 
     def test_bad_update(self):
         bootstrap = spawn_node("bootstrap")
-        connector = spawn_node("connector", [bootstrap.node.my_con()])
+        connector = spawn_node("connector", [bootstrap.node.my_con().to_json()])
 
         state = NodeState("bootstrap", bootstrap.node.my_con(), bootstrap.node.my_version(), time.time(), { })
         try: 
@@ -215,16 +220,16 @@ class TestNode(unittest.TestCase):
     
     def test_bad_hello(self):
         bootstrap = spawn_node("bootstrap")
-        connector_0 = spawn_node("connector-0", [bootstrap.node.my_con()])
+        connector_0 = spawn_node("connector-0", [bootstrap.node.my_con().to_json()])
         connector_0.stop()
-        connector_1 = spawn_node("connector-1", [bootstrap.node.my_con()])
+        connector_1 = spawn_node("connector-1", [bootstrap.node.my_con().to_json()])
         self.assertEqual(connector_1.node.peers(), ["bootstrap", "connector-1"])
 
     def test_connection_from_node(self):
         n0 = spawn_node("node-0")
-        n1 = spawn_node("node-1", [n0.node.my_con()])
-        _, port = n0.node.connection_from_node("node-1")
-        self.assertEqual(port, n1.config.port)
+        n1 = spawn_node("node-1", [n0.node.my_con().to_json()])
+        con = n0.node.connection_from_node("node-1")
+        self.assertEqual(con.port, n1.config.port)
         try:
             n0.node.connection_from_node("test")
             self.fail("Should throw error if it can't find a matching node")

@@ -8,6 +8,7 @@ import threading
 from requests import RequestException
 from typing import Dict, Tuple, List, Optional
 
+from distributed_state_network.objects.endpoint import Endpoint
 from distributed_state_network.objects.packets import BootstrapPacket, HelloPacket
 from distributed_state_network.objects.state import NodeState
 from distributed_state_network.objects.config import DSNodeConfig
@@ -30,7 +31,7 @@ class DSNode:
         ):
         self.config = config
         self.node_states = {
-            self.config.node_id: NodeState(self.config.node_id, ("127.0.0.1", config.port), version, time.time(), { })
+            self.config.node_id: NodeState(self.config.node_id, Endpoint("127.0.0.1", config.port), version, time.time(), { })
         }
         self.cert_manager = CertManager(config.node_id)
         CertManager.generate_certs(config.node_id)
@@ -68,25 +69,25 @@ class DSNode:
                     remove(node_id)
 
     def send_request_to_node(self, node_id: str, path: str, payload: bytes, verify) -> Tuple[requests.Response, bytes]:
-        ip, port = self.connection_from_node(node_id)
-        return self.send_request((ip, port), path, payload, verify)
+        con = self.connection_from_node(node_id)
+        return self.send_request(con, path, payload, verify)
 
-    def send_request(self, con: Tuple[str, int], path: str, payload: bytes, verify, retries: int = 0) -> Tuple[requests.Response, bytes]:
+    def send_request(self, con: Endpoint, path: str, payload: bytes, verify, retries: int = 0) -> Tuple[requests.Response, bytes]:
         res = None
         try:
-            res = requests.post(f'https://{con[0]}:{con[1]}/{path}', data=self.encrypt_data(payload), verify=verify, timeout=2)
+            res = requests.post(f'https://{con.to_string()}/{path}', data=self.encrypt_data(payload), verify=verify, timeout=2)
         except Exception as e:
             self.logger.error(e)
             time.sleep(1)
             if retries < 2:
                 self.send_request(con, path, payload, verify, retries + 1)
             else:
-                raise RequestException(f'{path.upper()} => {con[0]}:{con[1]} (no response)')
+                raise RequestException(f'{path.upper()} => {con.to_string()} (no response)')
         return self.parse_response(con, path, res)
 
-    def parse_response(self, con: Tuple[str, int], path: str, res: requests.Response) -> Tuple[requests.Response, bytes]:
+    def parse_response(self, con: Endpoint, path: str, res: requests.Response) -> Tuple[requests.Response, bytes]:
         if res.status_code != 200:
-            raise RequestException(f'{path.upper()} => {con[0]}:{con[1]} (status code {res.status_code})')
+            raise RequestException(f'{path.upper()} => {con.to_string()} (status code {res.status_code})')
         
         possible_fail_responses = [
             b'Not Authorized',
@@ -95,14 +96,14 @@ class DSNode:
         ]
 
         if res.content in possible_fail_responses:
-            raise RequestException(f'{path.upper()} => {con[0]}:{con[1]} ({res.content})')
+            raise RequestException(f'{path.upper()} => {con.to_string()} ({res.content})')
         
         decrypted_data = b''
         if len(res.content) > 0:
             try:
                 decrypted_data = self.decrypt_data(res.content)
             except Exception as e:
-                raise RequestException(f'{path.upper()} => {con[0]}:{con[1]} (cannot decrypt response)')
+                raise RequestException(f'{path.upper()} => {con.to_string()} (cannot decrypt response)')
 
         return res, decrypted_data
 
@@ -133,14 +134,13 @@ class DSNode:
         except Exception as e:
             raise RequestException(f'PING => {node_id}: {e}')
 
-    def send_bootstrap(self, con: Tuple[str, int]) -> str:
+    def send_bootstrap(self, endpoint: Endpoint) -> str:
         cert_bytes = self.cert_manager.read_cert(self.config.node_id)
         state = { self.config.node_id: self.my_state() }
         payload = BootstrapPacket(self.my_version(), self.config.node_id, cert_bytes, state).to_bytes()
-        name = f'{con[0]}:{con[1]}'
-        self.logger.info(f"BOOTSTRAP => {name}")
+        self.logger.info(f"BOOTSTRAP => {endpoint.to_string()}")
         
-        res, content = self.send_request(con, 'bootstrap', payload, False)
+        res, content = self.send_request(endpoint, 'bootstrap', payload, False)
         pkt = BootstrapPacket.from_bytes(content)
     
         self.node_states = pkt.state_data
@@ -190,8 +190,9 @@ class DSNode:
     def my_state(self):
         return self.node_states[self.config.node_id]
 
-    def bootstrap(self, con: Tuple[str, int]) -> bool:
-        bootstrap_id = self.send_bootstrap(con)
+    def bootstrap(self, con: Dict) -> bool:
+        endpoint = Endpoint.from_json(con)
+        bootstrap_id = self.send_bootstrap(endpoint)
         for n in list(self.node_states.keys())[:]:
             if n != self.config.node_id and n != bootstrap_id:
                 try:
@@ -201,11 +202,11 @@ class DSNode:
                     self.logger.error(e)
                     del self.node_states[n]
                 
-    def connection_from_node(self, node_id: str) -> Tuple[str, int]:
+    def connection_from_node(self, node_id: str) -> Endpoint:
         if node_id not in self.node_states:
             raise Exception(f"could not find connection for {node_id}")
         state = self.node_states[node_id]
-        return (state.ip, state.port)
+        return state.connection
 
     def update_data(self, key: str, val: str):
         self.node_states[self.config.node_id].update_state(key, val)
@@ -214,7 +215,7 @@ class DSNode:
                 continue
             self.send_update(key)
 
-    def my_con(self) -> Tuple[str, int]:
+    def my_con(self) -> Endpoint:
         return self.connection_from_node(self.config.node_id)
 
     def read_data(self, node_id: str, key: str) -> Optional[str]:
