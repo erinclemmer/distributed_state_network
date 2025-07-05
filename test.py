@@ -205,7 +205,6 @@ class TestNode(unittest.TestCase):
             print(e)
             self.assertEqual(e.args[0], "Received outdated update packet")
     
-
     def test_bad_hello(self):
         bootstrap = spawn_node("bootstrap")
         connector_0 = spawn_node("connector-0", [bootstrap.node.my_con()])
@@ -229,6 +228,27 @@ class TestNode(unittest.TestCase):
         self.assertEqual(n.node.public_key_file(), "certs/node/node.crt")
         self.assertEqual(n.node.private_key_file(), "certs/node/node.key")
         self.assertIsNone(n.node.get_certificate("Bad-Node"))
+
+    def test_config_dict(self):
+        config_dict = {
+            "node_id": "node",
+            "port": 8000,
+            "aes_key_file": "test.key",
+            "bootstrap_nodes": [
+                {
+                    "address": "127.0.0.1",
+                    "port": 8001
+                }
+            ]
+        }
+
+        config = DSNodeConfig.from_dict(config_dict)
+        self.assertEqual(config_dict["node_id"], config.node_id)
+        self.assertEqual(config_dict["port"], config.port)
+        self.assertEqual(config_dict["aes_key_file"], config.aes_key_file)
+        self.assertTrue(len(config.bootstrap_nodes) > 0)
+        self.assertEqual(config_dict["bootstrap_nodes"][0]["address"], config.bootstrap_nodes[0].address)
+        self.assertEqual(config_dict["bootstrap_nodes"][0]["port"], config.bootstrap_nodes[0].port)
 
 if __name__ == "__main__":
     unittest.main()

@@ -40,9 +40,6 @@ class DSNodeHandler(BaseHTTPRequestHandler):
     server: "NodeServer"
 
     def do_POST(self):
-        if self.server.node.shutting_down:
-            respond_bytes(self, b'DOWN')
-        
         content_length = int(self.headers.get('Content-Length', 0))
         try:
             body = self.server.node.decrypt_data(self.rfile.read(content_length))
@@ -83,8 +80,8 @@ class DSNodeServer(HTTPServer):
         self.node.logger.info(f'Started DSNode on port {config.port}')
 
     def stop(self):
-        self.shutdown()
         self.node.shutting_down = True
+        self.shutdown()
         self.socket.close()
         stop_thread(self.thread)
 

@@ -89,7 +89,6 @@ class DSNode:
             raise RequestException(f'{path.upper()} => {con[0]}:{con[1]} (status code {res.status_code})')
         
         possible_fail_responses = [
-            b'DOWN',
             b'Not Authorized',
             b'Bad Request Data',
             b'Version Mismatch'
