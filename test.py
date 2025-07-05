@@ -9,7 +9,7 @@ import unittest
 import threading
 from typing import List
 
-sys.path.append(os.path.join(os.path.dirname(__file__), '../src'))
+sys.path.append(os.path.join(os.path.dirname(__file__), './src'))
 
 from distributed_state_network import DSNodeServer, Endpoint, DSNodeConfig
 

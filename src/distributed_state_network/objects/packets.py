@@ -3,6 +3,7 @@ from io import BytesIO
 from typing import Dict
 
 from distributed_state_network.util import bytes_to_int, int_to_bytes
+from distributed_state_network.util.byte_helper import ByteHelper
 
 class BootstrapPacket:
     version: str
@@ -23,40 +24,21 @@ class BootstrapPacket:
         self.state_data = state_data
 
     def to_bytes(self):
-        bts = BytesIO()
+        bts = ByteHelper()
+        bts.write_string(self.version)
+        bts.write_string(self.node_id)
+        bts.write_bytes(self.https_certificate)
+        bts.write_string(json.dumps(self.state_data))
 
-        version = self.version.encode('utf-8')
-        bts.write(int_to_bytes(len(version)))
-        bts.write(version)
-
-        my_id = self.node_id.encode('utf-8')
-        bts.write(int_to_bytes(len(my_id)))
-        bts.write(my_id)
-        
-        bts.write(int_to_bytes(len(self.https_certificate)))
-        bts.write(self.https_certificate)
-
-        state_bytes = json.dumps(self.state_data).encode('utf-8')
-        bts.write(int_to_bytes(len(state_bytes)))
-        bts.write(state_bytes)
-        
-        return bts.getvalue()
+        return bts.get_bytes()
 
     @staticmethod
     def from_bytes(data: bytes):
-        bts = BytesIO(data)
-        
-        l = bytes_to_int(bts.read(4))
-        version = bts.read(l).decode('utf-8')
-
-        l = bytes_to_int(bts.read(4))
-        node_id = bts.read(l).decode('utf-8')
-
-        l = bytes_to_int(bts.read(4))
-        https_certificate = bts.read(l)
-
-        l = bytes_to_int(bts.read(4))
-        state_data = json.loads(bts.read(l).decode('utf-8'))
+        bts = ByteHelper(data)
+        version = bts.read_string()
+        node_id = bts.read_string()
+        https_certificate = bts.read_bytes()
+        state_data = json.loads(bts.read_string())
         
         return BootstrapPacket(version, node_id, https_certificate, state_data)
         
@@ -70,25 +52,16 @@ class HelloPacket:
         self.https_certificate = https_certificate
 
     def to_bytes(self):
-        bts = BytesIO()
-
-        node_id = self.node_id.encode('utf-8')
-        bts.write(int_to_bytes(len(node_id)))
-        bts.write(node_id)
-
-        bts.write(int_to_bytes(len(self.https_certificate)))
-        bts.write(self.https_certificate)
-
-        return bts.getvalue()
+        bts = ByteHelper()
+        bts.write_string(self.node_id)
+        bts.write_bytes(self.https_certificate)
+        
+        return bts.get_bytes()
 
     @staticmethod
     def from_bytes(data: bytes):
-        bts = BytesIO(data)
-
-        l = bytes_to_int(bts.read(4))
-        node_id = bts.read(l)
-
-        l = bytes_to_int(bts.read(4))
-        https_certificate = bts.read(l)
-
+        bts = ByteHelper(data)
+        node_id = bts.read_string()
+        https_certificate = bts.read_bytes()
+        
         return HelloPacket(node_id, https_certificate)

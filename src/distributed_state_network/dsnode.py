@@ -29,14 +29,14 @@ class DSNode:
             version: str,
         ):
         self.config = config
-        self.node_states = { }
+        self.node_states = {
+            self.config.node_id: NodeState(self.config.node_id, ("127.0.0.1", config.port), version, time.time(), { })
+        }
         self.cert_manager = CertManager(config.node_id)
         CertManager.generate_certs(config.node_id)
         self.logger = logging.getLogger("DSN: " + config.node_id)
         if not os.path.exists(config.aes_key_file):
             raise Exception(f"Could not find aes key file in {config.aes_key_file}")
-        
-        self.node_states[self.config.node_id] = NodeState(self.config.node_id, ("127.0.0.1", config.port), version, time.time(), { })
         threading.Thread(target=self.network_tick).start()
 
     def get_aes_key(self):

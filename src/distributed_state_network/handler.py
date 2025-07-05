@@ -6,7 +6,8 @@ from typing import Tuple
 from threading import Thread
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-from distributed_state_network import DSNode, DSNodeConfig
+from distributed_state_network.dsnode import DSNode
+from distributed_state_network.objects.config import DSNodeConfig
 from distributed_state_network.util.aes import generate_aes_key
 from distributed_state_network.util import stop_thread
 
