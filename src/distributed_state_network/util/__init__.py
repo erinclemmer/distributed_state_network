@@ -29,6 +29,6 @@ def stop_thread(thread: threading.Thread):
     thread_id = thread.ident
     res = ctypes.pythonapi.PyThreadState_SetAsyncExc(thread_id,
             ctypes.py_object(SystemExit))
-    if res > 1:
+    if res > 1: # pragma: no cover
         ctypes.pythonapi.PyThreadState_SetAsyncExc(thread_id, 0)
         print('Exception raise failure')

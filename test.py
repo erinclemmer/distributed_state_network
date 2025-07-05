@@ -296,8 +296,12 @@ class TestNode(unittest.TestCase):
             print(e)
 
     def test_aes(self):
-        key = generate_aes_key()
+        test_key_file = 'delete_me.key'
+        DSNodeServer.generate_key(test_key_file)
+        with open(test_key_file, 'rb') as f:
+            key = f.read()
         self.assertEqual(32, len(key))
+        os.remove(test_key_file)
 
     def test_write_cert(self):
         if os.path.exists('certs'):
@@ -325,6 +329,12 @@ class TestNode(unittest.TestCase):
             print(e)
 
         shutil.rmtree('certs')
+
+    def test_verify_cert(self):
+        if os.path.exists('certs'):
+            shutil.rmtree('certs')
+        cm = CertManager('test')
+        self.assertFalse(cm.verify_cert('test', b'BAD KEY'))
 
 if __name__ == "__main__":
     unittest.main()
