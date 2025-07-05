@@ -14,7 +14,7 @@ from distributed_state_network.util import stop_thread
 VERSION = "0.0.1"
 logging.basicConfig(level=logging.INFO)
 
-def _respond_bytes(handler: BaseHTTPRequestHandler, data: bytes):
+def respond_bytes(handler: BaseHTTPRequestHandler, data: bytes):
     handler.send_response(200)
     handler.send_header("Content-Type", "application/octet-stream")
     handler.end_headers()
@@ -26,30 +26,30 @@ class DSNodeHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         if self.server.node.shutting_down:
-            _respond_bytes(self, b'DOWN')
+            respond_bytes(self, b'DOWN')
         
         content_length = int(self.headers.get('Content-Length', 0))
         try:
             body = self.server.node.decrypt_data(self.rfile.read(content_length))
         except Exception as e:
             self.server.node.logger.error(f"{self.path}: Error decrypting data, {e}")
-            _respond_bytes(b'Not Authorized')
+            respond_bytes(b'Not Authorized')
             return
 
         if self.path == "/bootstrap":
             res = self.server.node.handle_bootstrap(body)
-            _respond_bytes(self, self.server.node.encrypt_data(res))
+            respond_bytes(self, self.server.node.encrypt_data(res))
 
         elif self.path == "/hello":
             res = self.server.node.handle_hello(body)
-            _respond_bytes(self, self.server.node.encrypt_data(res))
+            respond_bytes(self, self.server.node.encrypt_data(res))
 
         elif self.path == "/update":
             Thread(target=self.server.node.handle_update, args=(body, )).start()
-            _respond_bytes(self, b'')
+            respond_bytes(self, b'')
 
         elif self.path == "/ping":
-            _respond_bytes(self, b'')
+            respond_bytes(self, b'')
 
     def log_message(self, format, *args):
         pass

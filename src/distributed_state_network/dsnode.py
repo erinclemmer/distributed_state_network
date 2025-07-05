@@ -146,7 +146,8 @@ class DSNode:
 
     def send_bootstrap(self, con: Tuple[str, int]) -> str:
         cert_bytes = self.cert_manager.read_cert(self.config.node_id)
-        payload = BootstrapPacket(self.my_version(), self.config.node_id, cert_bytes,  self.my_state().to_dict()).to_bytes()
+        state = { self.config.node_id: self.my_state() }
+        payload = BootstrapPacket(self.my_version(), self.config.node_id, cert_bytes, state).to_bytes()
         name = f'{con[0]}:{con[1]}'
         self.logger.info(f"BOOTSTRAP => {name}")
         
@@ -157,11 +158,8 @@ class DSNode:
        
         pkt = BootstrapPacket.from_bytes(content)
     
+        self.node_states = pkt.state_data
         self.cert_manager.ensure_cert(pkt.node_id, pkt.https_certificate)
-
-        for key in pkt.state_data.keys():
-            if key != self.config.node_id:
-                self.node_states[key] = NodeState.from_dict(pkt.state_data[key])
 
         return pkt.node_id
 
@@ -178,27 +176,24 @@ class DSNode:
             return f'Version mismatch {state.version} != {self.my_version()}'.encode('utf-8')
 
         self.cert_manager.ensure_cert(pkt.node_id, pkt.https_certificate)
-        self.node_states[pkt.node_id] = NodeState.from_dict(pkt.state_data)
+        self.node_states[pkt.node_id] = pkt.state_data[pkt.node_id]
 
-        state_data = { }
-        for key in self.node_states.keys():
-            state_data[key] = self.node_states[key].to_dict()
-        
         my_cert = self.cert_manager.read_cert(self.config.node_id)
-        return BootstrapPacket(self.my_version(), self.config.node_id, my_cert, state_data).to_bytes()
+        return BootstrapPacket(self.my_version(), self.config.node_id, my_cert, self.node_states).to_bytes()
 
     def send_update(self, node_id: str):
         try:
             self.logger.info(f"UPDATE => {node_id}")
-            payload = json.dumps(self.my_state().to_dict()).encode('utf-8')
-            self.send_request_to_node(node_id, 'update', payload, self.cert_manager.cert_path(node_id))
+            self.send_request_to_node(node_id, 'update', self.my_state().to_bytes(), self.cert_manager.cert_path(node_id))
         except Exception as e:
             self.logger.error(f"!!ERROR!! UPDATE => {node_id}: {e}")
 
     def handle_update(self, data: bytes):
-        pkt = NodeState.from_dict(json.loads(data.decode('utf-8')))
+        pkt = NodeState.from_bytes(data)
+        
         if pkt.node_id == self.config.node_id:
-            return
+            return # ignore if we accidentally sent an update to ourselves
+        
         if pkt.node_id in self.node_states and self.node_states[pkt.node_id].last_update > pkt.last_update:
             return # don't use packets older than last update
         
@@ -206,8 +201,7 @@ class DSNode:
             self.node_states[pkt.node_id] = pkt
             return
 
-        current_data = self.node_states[pkt.node_id]
-        if get_dict_hash(current_data.to_dict()) != get_dict_hash(pkt.to_dict()):
+        if get_dict_hash(self.node_states[pkt.node_id].state_data) != get_dict_hash(pkt.state_data):
             self.node_states[pkt.node_id] = pkt
 
     def my_version(self):
@@ -250,9 +244,9 @@ class DSNode:
         return self.my_state().port
 
     def read_data(self, node_id: str, key: str) -> Optional[str]:
-        if key not in self.node_states[node_id].state.keys():
+        if key not in self.node_states[node_id].state_data.keys():
             return None
-        return self.node_states[node_id].state[key]
+        return self.node_states[node_id].state_data[key]
 
     def get_certificate(self, node_id: str) -> Optional[str]:
         path = self.cert_manager.cert_path(node_id)

@@ -3,3 +3,4 @@ env/
 certs/
 .vscode/
 test.key
+.coverage

@@ -1,5 +1,6 @@
 import json
 import ctypes
+import struct
 import threading
 from hashlib import sha256
 
@@ -9,9 +10,17 @@ def int_to_bytes(i: int) -> bytes:
 def bytes_to_int(b: bytes) -> int:
     return int.from_bytes(b, 'little', signed=False)
 
+def float_to_bytes(f: float) -> bytes:
+    return struct.pack("<f", f)
+
+def bytes_to_float(b: bytes) -> float:
+    return struct.unpack("<f", b)[0]
+
+def get_byte_hash(data: bytes) -> bytes:
+    return sha256(data)
+
 def get_hash(data: str) -> str:
-    hash = sha256(data.encode())
-    return hash.hexdigest()
+    return get_byte_hash(data.encode('utf-8')).hexdigest()
 
 def get_dict_hash(data: dict):
     return get_hash(json.dumps(data))

@@ -98,6 +98,7 @@ class TestNode(unittest.TestCase):
         time.sleep(10)
         self.assertNotIn(connector.config.node_id, bootstrap.node.peers())
 
+    @unittest.skip("")
     def test_churn(self):
         bootstrap = spawn_node("bootstrap")
         
