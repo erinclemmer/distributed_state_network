@@ -14,8 +14,11 @@ from typing import List
 sys.path.append(os.path.join(os.path.dirname(__file__), './src'))
 
 from distributed_state_network import DSNodeServer, Endpoint, DSNodeConfig
+
 from distributed_state_network.objects.state import NodeState
 from distributed_state_network.objects.packets import HelloPacket, BootstrapPacket
+
+from distributed_state_network.util.cert import CertManager
 from distributed_state_network.util.aes import generate_aes_key
 
 current_port = 8000
@@ -295,6 +298,33 @@ class TestNode(unittest.TestCase):
     def test_aes(self):
         key = generate_aes_key()
         self.assertEqual(32, len(key))
+
+    def test_write_cert(self):
+        if os.path.exists('certs'):
+            shutil.rmtree('certs')
+        cm = CertManager('test')
+        cm.write_cert('test', b'TEST')
+        self.assertTrue(os.path.exists('certs/test/test.crt'))
+        shutil.rmtree('certs')
+
+    def test_read_cert(self):
+        if os.path.exists('certs'):
+            shutil.rmtree('certs')
+        cm = CertManager('test')
+        self.assertIsNone(cm.read_cert('test'))
+
+    def test_ensure_cert(self):
+        if os.path.exists('certs'):
+            shutil.rmtree('certs')
+        cm = CertManager('test')
+        CertManager.generate_certs("test")
+        try:
+            cm.ensure_cert("test", b'WRONG CERTIFICATE')
+            self.fail("Should throw error for certificate mismatch")
+        except Exception as e:
+            print(e)
+
+        shutil.rmtree('certs')
 
 if __name__ == "__main__":
     unittest.main()

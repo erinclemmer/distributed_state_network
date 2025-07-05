@@ -17,7 +17,7 @@ class CertManager:
 
     def read_cert(self, node_id: str) -> bytes:
         if not os.path.exists(f'certs/{self.node_id}/{node_id}.crt'):
-            return b''
+            return None
         with open(f'certs/{self.node_id}/{node_id}.crt', 'rb') as f:
             return f.read()
 
