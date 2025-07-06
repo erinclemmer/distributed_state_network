@@ -82,7 +82,7 @@ class TestNode(unittest.TestCase):
     def test_multi_bootstrap(self):
         bootstraps = [spawn_node(f"bootstrap-{i}") for i in range(0, 3)]
         for i in range(1, len(bootstraps)):
-            bootstraps[i].node.bootstrap(bootstraps[i-1].node.my_con().to_json())
+            bootstraps[i].node.bootstrap(bootstraps[i-1].node.my_con())
         
         connectors = []
         for bs in bootstraps:
@@ -201,8 +201,9 @@ class TestNode(unittest.TestCase):
     def test_bad_update(self):
         bootstrap = spawn_node("bootstrap")
         connector = spawn_node("connector", [bootstrap.node.my_con().to_json()])
-        state = NodeState("bootstrap", bootstrap.node.my_con(), bootstrap.node.my_version(), time.time(), None, { })
-        state.sign(bootstrap.node.cred_manager.my_private())
+        bt_prv_key = bootstrap.node.cred_manager.my_private()
+        cn_prv_key = connector.node.cred_manager.my_private()
+        state = NodeState.create("bootstrap", bootstrap.node.my_con(), bootstrap.node.my_version(), time.time(), bt_prv_key, { })
         try: 
             bootstrap.node.handle_update(state.to_bytes())
             self.fail("Node should not handle updates for itself")
@@ -218,12 +219,11 @@ class TestNode(unittest.TestCase):
             self.assertEqual(e.args[0], "Not Authorized")
 
         time_before = time.time() - 10
-        state = NodeState("connector", bootstrap.node.my_con(), bootstrap.node.my_version(), time.time(), b'', { "a": 1 })
+        state = NodeState.create("connector", bootstrap.node.my_con(), bootstrap.node.my_version(), time.time(), cn_prv_key, { "a": 1 })
         state.sign(connector.node.cred_manager.my_private())
         bootstrap.node.handle_update(state.to_bytes())
 
-        state = NodeState("connector", bootstrap.node.my_con(), bootstrap.node.my_version(), time_before, b'', { "a": 2 })
-        state.sign(connector.node.cred_manager.my_private())
+        state = NodeState.create("connector", bootstrap.node.my_con(), bootstrap.node.my_version(), time_before, cn_prv_key, { "a": 2 })
         try: 
             bootstrap.node.handle_update(state.to_bytes())
             self.fail("Node should only accept update packets that are newer than the version we have")

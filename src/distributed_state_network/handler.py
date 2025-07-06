@@ -108,7 +108,7 @@ class DSNodeServer(HTTPServer):
         if n.config.bootstrap_nodes is not None and len(n.config.bootstrap_nodes) > 0:
             for bs in n.config.bootstrap_nodes:
                 try:
-                    n.node.bootstrap(bs.to_json())
+                    n.node.bootstrap(bs)
                     break # Throws exception if connection is not made
                 except Exception as e:
                     print(e)

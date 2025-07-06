@@ -54,6 +54,20 @@ class NodeState:
         return bts.get_bytes()
     
     @staticmethod
+    def create(
+        node_id: str, 
+        connection: Endpoint,
+        version: str,
+        last_update: float,
+        ecdsa_private_key: bytes,
+        state_data: Dict[str, str]
+    ):
+        s = NodeState(node_id, connection, version, last_update, None, state_data)
+        s.sign(ecdsa_private_key)
+        return s
+
+
+    @staticmethod
     def from_bytes(data: bytes):
         bts = ByteHelper(data)
         node_id = bts.read_string()

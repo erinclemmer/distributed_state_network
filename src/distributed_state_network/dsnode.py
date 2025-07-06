@@ -38,10 +38,8 @@ class DSNode:
         self.cred_manager.generate_certs()
         
         self.node_states = {
-            self.config.node_id: NodeState(self.config.node_id, Endpoint("127.0.0.1", config.port), version, time.time(), None, { })
+            self.config.node_id: NodeState.create(self.config.node_id, Endpoint("127.0.0.1", config.port), version, time.time(), self.cred_manager.my_private(), { })
         }
-
-        self.node_states[self.config.node_id].sign(self.cred_manager.my_private())
         
         self.logger = logging.getLogger("DSN: " + config.node_id)
         if not os.path.exists(config.aes_key_file):
@@ -214,9 +212,8 @@ class DSNode:
     def my_state(self):
         return self.node_states[self.config.node_id]
 
-    def bootstrap(self, con: Dict) -> bool:
-        endpoint = Endpoint.from_json(con)
-        bootstrap_id = self.send_hello(endpoint)
+    def bootstrap(self, con: Endpoint) -> bool:
+        bootstrap_id = self.send_hello(con)
         self.request_peers(bootstrap_id)
 
     def connection_from_node(self, node_id: str) -> Endpoint:
