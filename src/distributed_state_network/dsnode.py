@@ -97,15 +97,6 @@ class DSNode:
         if res.status_code != 200:
             raise RequestException(f'{path.upper()} => {con.to_string()} (status code {res.status_code})')
         
-        possible_fail_responses = [
-            b'Not Authorized',
-            b'Bad Request Data',
-            b'Version Mismatch'
-        ]
-
-        if res.content in possible_fail_responses:
-            raise RequestException(f'{path.upper()} => {con.to_string()} ({res.content})')
-        
         decrypted_data = b''
         if len(res.content) > 0:
             try:
@@ -135,7 +126,7 @@ class DSNode:
     def handle_peers(self, data: bytes):
         from_node_id = data.decode('utf-8')
         if from_node_id not in self.node_states:
-            raise Exception("Not Authorized")
+            raise Exception(401) # Not Authorized
         
         peers = { }
         for key in self.node_states.keys():
@@ -159,7 +150,7 @@ class DSNode:
         if pkt.version != self.my_version():
             msg = f"HELLO => {pkt.node_id} (Version mismatch \"{pkt.version}\" != \"{self.my_version()}\")"
             self.logger.error(msg)
-            raise Exception("Version Mismatch")
+            raise Exception(505) # Version not supported
 
         self.cert_manager.ensure_cert(pkt.node_id, pkt.https_certificate)
         self.cred_manager.ensure_cert(pkt.node_id, pkt.ecdsa_public_key)
@@ -188,14 +179,14 @@ class DSNode:
         
         # ignore if we accidentally sent an update to ourselves
         if pkt.node_id == self.config.node_id:
-            raise Exception("Received update for our own node")
+            raise Exception(406) # Not acceptable
         
         # don't use packets older than last update
         if pkt.node_id in self.node_states and self.node_states[pkt.node_id].last_update > pkt.last_update:
-            raise Exception("Received outdated update packet")
+            raise Exception(406) # Not acceptable
         
         if not pkt.verify(self.cred_manager.read_cert(pkt.node_id)):
-            raise Exception("Not Authorized")
+            raise Exception(401) # Not authorized
         
         if pkt.node_id not in self.node_states:
             self.node_states[pkt.node_id] = pkt

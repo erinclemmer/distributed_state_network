@@ -21,10 +21,6 @@ def respond_bytes(handler: BaseHTTPRequestHandler, data: bytes):
     handler.wfile.write(data)
     handler.wfile.flush()
 
-def respond_404(handler: BaseHTTPRequestHandler):
-    handler.send_response(404)
-    handler.end_headers()
-
 def graceful_fail(httpd: BaseHTTPRequestHandler, body: bytes, fn: Callable):
     try:
         fn_result = fn(body)
@@ -33,8 +29,9 @@ def graceful_fail(httpd: BaseHTTPRequestHandler, body: bytes, fn: Callable):
         else:
             respond_bytes(httpd, b'')
     except Exception as e:
-        httpd.server.node.logger.error(e)
-        respond_bytes(httpd, str(e.args[0]).encode('utf-8'))
+        httpd.server.node.logger.error(f"Sending Error: {e.args[0]}")
+        httpd.send_response(e.args[0])
+        httpd.end_headers()
 
 class DSNodeHandler(BaseHTTPRequestHandler):
     server: "NodeServer"
@@ -62,7 +59,8 @@ class DSNodeHandler(BaseHTTPRequestHandler):
             respond_bytes(self, b'')
 
         else:
-            respond_404(self)
+            self.send_response(404)
+            self.end_headers()
 
     def log_message(self, format, *args):
         pass

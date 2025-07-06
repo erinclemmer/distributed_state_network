@@ -209,14 +209,14 @@ class TestNode(unittest.TestCase):
             self.fail("Node should not handle updates for itself")
         except Exception as e:
             print(e)
-            self.assertEqual(e.args[0], "Received update for our own node")
+            self.assertEqual(e.args[0], 406)
         state = NodeState("connector", bootstrap.node.my_con(), bootstrap.node.my_version(), time.time(), b'', { })
         try:
             bootstrap.node.handle_update(state.to_bytes())
             self.fail("Should not accepted unsigned packets")
         except Exception as e:
             print(e)
-            self.assertEqual(e.args[0], "Not Authorized")
+            self.assertEqual(e.args[0], 401)
 
         time_before = time.time() - 10
         state = NodeState.create("connector", bootstrap.node.my_con(), bootstrap.node.my_version(), time.time(), cn_prv_key, { "a": 1 })
@@ -229,7 +229,7 @@ class TestNode(unittest.TestCase):
             self.fail("Node should only accept update packets that are newer than the version we have")
         except Exception as e:
             print(e)
-            self.assertEqual(e.args[0], "Received outdated update packet")
+            self.assertEqual(e.args[0], 406)
     
     def test_bad_hello(self):
         bootstrap = spawn_node("bootstrap")

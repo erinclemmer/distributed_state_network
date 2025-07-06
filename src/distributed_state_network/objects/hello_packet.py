@@ -50,6 +50,6 @@ class HelloPacket:
         https_certificate = bts.read_bytes()
 
         if version == '' or node_id == '' or ecdsa_public_key == b'' or https_certificate == b'':
-            raise Exception("Bad Request Data")
+            raise Exception(406) # Not acceptable
 
         return HelloPacket(version, node_id, connection, ecdsa_public_key, https_certificate)

@@ -75,7 +75,7 @@ class NodeState:
         version = bts.read_string()
         
         if node_id == '' or connection.address == '' or version == '':
-            raise Exception("Bad Request Data")
+            raise Exception(406) # Not acceptable
         
         last_update = bts.read_float()
         ecdsa_signature = bts.read_bytes()
