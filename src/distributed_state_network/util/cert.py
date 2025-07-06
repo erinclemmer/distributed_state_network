@@ -40,7 +40,7 @@ class KeyManager:
     def ensure_cert(self, node_id: str, cert: bytes):
         if self.has_cert(node_id):
             if not self.verify_cert(node_id, cert):
-                raise Exception(f"[{self.node_id}] could not verify certificate from {node_id}")
+                raise Exception(401)
         else:
             self.write_cert(node_id, cert)
 

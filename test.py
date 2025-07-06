@@ -342,11 +342,16 @@ class TestNode(unittest.TestCase):
         cm = CertManager('test')
         self.assertFalse(cm.verify_cert('test', b'BAD KEY'))
 
-    # TODO: Test https validation
-    # Test node id authentication
-    # Ensure that if a node tries to connect with a previously known node id and a new certificate it is kicked off the network
-    # We should not be able to send an update to a node with a https certificate that does not match
-    # Don't send state data back from the bootstrap node that is not for the bootstrap node, send back NodeState objects with empty states and a very old update time
+    def test_authentication(self):
+        bootstrap = spawn_node("bootstrap")
+        connector = spawn_node("connector", [bootstrap.node.my_con().to_json()])
+        connector.stop()
+        shutil.rmtree("credentials/connector")
+        try:
+            connector = spawn_node("connector", [bootstrap.node.my_con().to_json()])
+            self.fail("Should not be able to authenticate with bootstrap and throw error because credentials are reset")
+        except Exception as e:
+            print(e)
 
 if __name__ == "__main__":
     unittest.main()
