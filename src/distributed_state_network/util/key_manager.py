@@ -12,15 +12,15 @@ class KeyManager:
         folder: str,
         public_extension: str,
         private_extension: str,
-        generate_keys: Callable[[], Tuple[bytes, bytes]]
+        gen_keys: Callable[[], Tuple[bytes, bytes]]
     ):
         self.node_id = node_id
         self.folder = folder
         self.public_extension = public_extension
         self.private_extension = private_extension
-        self.generate_keys = generate_keys
+        self.gen_keys = gen_keys
 
-    def write_cert(self, node_id: str, cert: bytes):
+    def write_public(self, node_id: str, cert: bytes):
         if not os.path.exists(self.folder):
             os.mkdir(self.folder)
         if not os.path.exists(f'{self.folder}/{node_id}'):
@@ -28,44 +28,44 @@ class KeyManager:
         with open(f'{self.folder}/{self.node_id}/{node_id}.{self.public_extension}', 'wb') as f:
             f.write(cert)
 
-    def read_cert(self, node_id: str) -> bytes:
+    def read_public(self, node_id: str) -> bytes:
         if not os.path.exists(f'{self.folder}/{self.node_id}/{node_id}.{self.public_extension}'):
-            return None
+            raise Exception(401)
         with open(f'{self.folder}/{self.node_id}/{node_id}.{self.public_extension}', 'rb') as f:
             return f.read()
 
-    def has_cert(self, node_id: str) -> bool:
+    def has_public(self, node_id: str) -> bool:
         return os.path.exists(f'{self.folder}/{self.node_id}/{node_id}.{self.public_extension}')
 
-    def ensure_cert(self, node_id: str, cert: bytes):
-        if self.has_cert(node_id):
-            if not self.verify_cert(node_id, cert):
+    def ensure_public(self, node_id: str, public_key: bytes):
+        if self.has_public(node_id):
+            if not self.verify_public(node_id, public_key):
                 raise Exception(401)
         else:
-            self.write_cert(node_id, cert)
+            self.write_public(node_id, public_key)
 
-    def cert_path(self, node_id: str):
+    def public_path(self, node_id: str):
         return f"{self.folder}/{self.node_id}/{node_id}.{self.public_extension}"
 
-    def verify_cert(self, node_id: str, cert: bytes):
-        if not self.has_cert(node_id):
+    def verify_public(self, node_id: str, public_key: bytes):
+        if not self.has_public(node_id):
             return False
-        return cert == self.read_cert(node_id)
+        return public_key == self.read_public(node_id)
 
-    def my_cert(self) -> bytes:
-        return self.read_cert(self.node_id)
+    def my_public(self) -> bytes:
+        return self.read_public(self.node_id)
 
     def my_private(self):
         if not os.path.exists(f'{self.folder}/{self.node_id}/{self.node_id}.{self.private_extension}'):
-            return None
+            raise Exception("Private key not found")
         with open(f'{self.folder}/{self.node_id}/{self.node_id}.{self.private_extension}', 'rb') as f:
             return f.read()
 
-    def generate_certs(self):
+    def generate_keys(self):
         if os.path.exists(f'{self.folder}/{self.node_id}/{self.node_id}.{self.private_extension}'):
             return
         logging.getLogger("DSN: " + self.node_id).info("Generating Keys ...")
-        cert_bytes, key_bytes = self.generate_keys()
+        cert_bytes, key_bytes = self.gen_keys()
         if not os.path.exists(self.folder):
             os.mkdir(self.folder)
         if not os.path.exists(f'{self.folder}/{self.node_id}'):

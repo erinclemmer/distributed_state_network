@@ -13,9 +13,9 @@ def sign_message(private_key: bytes, message: bytes) -> bytes:
     return private_key.sign(message_hash)
 
 def verify_signature(public_key: bytes, message: bytes, signature: bytes):
-    public_key = VerifyingKey.from_string(public_key, curve=SECP256k1)
+    public_key_obj = VerifyingKey.from_string(public_key, curve=SECP256k1)
     message_hash = hashlib.sha256(message).digest()
     try:
-        return public_key.verify(signature, message_hash)
+        return public_key_obj.verify(signature, message_hash)
     except Exception:
         return False

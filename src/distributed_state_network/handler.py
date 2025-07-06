@@ -94,10 +94,10 @@ class DSNodeServer(HTTPServer):
     def start(config: DSNodeConfig) -> 'NodeServer':
         n = DSNodeServer(config)
         ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-        cert_path = n.node.cert_manager.cert_path(n.config.node_id)
+        public_path = n.node.cert_manager.public_path(n.config.node_id)
         ssl_context.load_cert_chain(
-            certfile=cert_path,
-            keyfile=cert_path.replace(".crt", ".key")
+            certfile=public_path,
+            keyfile=public_path.replace(".crt", ".key")
         )
         n.socket = ssl_context.wrap_socket(n.socket, server_side=True)
         n.thread = threading.Thread(target=serve, args=(n, ))

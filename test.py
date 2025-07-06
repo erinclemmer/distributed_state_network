@@ -18,14 +18,12 @@ from distributed_state_network import DSNodeServer, Endpoint, DSNodeConfig
 from distributed_state_network.objects.state import NodeState
 from distributed_state_network.objects.hello_packet import HelloPacket
 
-from distributed_state_network.util.cert import CertManager
+from distributed_state_network.util.key_manager import CertManager
 from distributed_state_network.util.aes import generate_aes_key
 
 current_port = 8000
 nodes = []
 
-if os.path.exists('certs'):
-    shutil.rmtree('certs')
 key_file = "src/distributed_state_network/test.key"
 
 if not os.path.exists(key_file):
@@ -53,6 +51,12 @@ class TestNode(unittest.TestCase):
         for n in nodes:
             n.stop()
         nodes = []
+
+        if os.path.exists('certs'):
+            shutil.rmtree('certs')
+
+        if os.path.exists('credentials'):
+            shutil.rmtree('credentials')
 
     def test_single(self):
         spawn_node("one")
@@ -98,7 +102,7 @@ class TestNode(unittest.TestCase):
                 self.assertIn(b.config.node_id, peers)
         
         for bi in bootstraps:
-            peers = b.node.peers()
+            peers = bi.node.peers()
             for bj in bootstraps:
                 self.assertIn(bj.config.node_id, peers)
             
@@ -219,11 +223,10 @@ class TestNode(unittest.TestCase):
             self.assertEqual(e.args[0], 401)
 
         time_before = time.time() - 10
-        state = NodeState.create("connector", bootstrap.node.my_con(), bootstrap.node.my_version(), time.time(), cn_prv_key, { "a": 1 })
-        state.sign(connector.node.cred_manager.my_private())
+        state = NodeState.create("connector", bootstrap.node.my_con(), bootstrap.node.my_version(), time.time(), cn_prv_key, { "a": "1" })
         bootstrap.node.handle_update(state.to_bytes())
 
-        state = NodeState.create("connector", bootstrap.node.my_con(), bootstrap.node.my_version(), time_before, cn_prv_key, { "a": 2 })
+        state = NodeState.create("connector", bootstrap.node.my_con(), bootstrap.node.my_version(), time_before, cn_prv_key, { "a": "2" })
         try: 
             bootstrap.node.handle_update(state.to_bytes())
             self.fail("Node should only accept update packets that are newer than the version we have")
@@ -248,12 +251,6 @@ class TestNode(unittest.TestCase):
             self.fail("Should throw error if it can't find a matching node")
         except Exception as e:
             print(e)
-
-    def test_get_certificate(self):
-        n = spawn_node("node")
-        self.assertEqual(n.node.public_key_file(), "certs/node/node.crt")
-        self.assertEqual(n.node.private_key_file(), "certs/node/node.key")
-        self.assertIsNone(n.node.get_certificate("Bad-Node"))
 
     def test_config_dict(self):
         config_dict = {
@@ -313,23 +310,26 @@ class TestNode(unittest.TestCase):
         if os.path.exists('certs'):
             shutil.rmtree('certs')
         cm = CertManager('test')
-        cm.write_cert('test', b'TEST')
+        cm.write_public('test', b'TEST')
         self.assertTrue(os.path.exists('certs/test/test.crt'))
         shutil.rmtree('certs')
 
-    def test_read_cert(self):
+    def test_read_public(self):
         if os.path.exists('certs'):
             shutil.rmtree('certs')
         cm = CertManager('test')
-        self.assertIsNone(cm.read_cert('test'))
+        try:
+            cm.read_public('test')
+        except Exception as e:
+            self.assertEqual(e.args[0], 401)
 
     def test_ensure_cert(self):
         if os.path.exists('certs'):
             shutil.rmtree('certs')
         cm = CertManager('test')
-        cm.generate_certs()
+        cm.generate_keys()
         try:
-            cm.ensure_cert("test", b'WRONG CERTIFICATE')
+            cm.ensure_public("test", b'WRONG CERTIFICATE')
             self.fail("Should throw error for certificate mismatch")
         except Exception as e:
             print(e)
@@ -340,9 +340,9 @@ class TestNode(unittest.TestCase):
         if os.path.exists('certs'):
             shutil.rmtree('certs')
         cm = CertManager('test')
-        self.assertFalse(cm.verify_cert('test', b'BAD KEY'))
+        self.assertFalse(cm.verify_public('test', b'BAD KEY'))
 
-    def test_authentication(self):
+    def test_authentication_reset(self):
         bootstrap = spawn_node("bootstrap")
         connector = spawn_node("connector", [bootstrap.node.my_con().to_json()])
         connector.stop()
@@ -352,6 +352,14 @@ class TestNode(unittest.TestCase):
             self.fail("Should not be able to authenticate with bootstrap and throw error because credentials are reset")
         except Exception as e:
             print(e)
+
+    def test_reauthentication(self):
+        if os.path.exists("credentials"):
+            shutil.rmtree("credentials")
+        bootstrap = spawn_node("bootstrap")
+        connector = spawn_node("connector", [bootstrap.node.my_con().to_json()])
+        connector.stop()
+        connector = spawn_node("connector", [bootstrap.node.my_con().to_json()])
 
 if __name__ == "__main__":
     unittest.main()

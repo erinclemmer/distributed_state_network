@@ -62,7 +62,7 @@ class NodeState:
         ecdsa_private_key: bytes,
         state_data: Dict[str, str]
     ):
-        s = NodeState(node_id, connection, version, last_update, None, state_data)
+        s = NodeState(node_id, connection, version, last_update, b'', state_data)
         s.sign(ecdsa_private_key)
         return s
 

@@ -17,12 +17,12 @@ def bytes_to_float(b: bytes) -> float:
     return struct.unpack(">d", b)[0]
 
 def get_byte_hash(data: bytes) -> bytes:
-    return sha256(data)
+    return sha256(data).digest()
 
-def get_hash(data: str) -> str:
-    return get_byte_hash(data.encode('utf-8')).hexdigest()
+def get_hash(data: str) -> bytes:
+    return get_byte_hash(data.encode('utf-8'))
 
-def get_dict_hash(data: dict):
+def get_dict_hash(data: dict) -> bytes:
     return get_hash(json.dumps(data))
 
 def stop_thread(thread: threading.Thread):

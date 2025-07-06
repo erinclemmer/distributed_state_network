@@ -14,7 +14,7 @@ from distributed_state_network.objects.state import NodeState
 from distributed_state_network.objects.config import DSNodeConfig
 
 from distributed_state_network.util import get_dict_hash
-from distributed_state_network.util.cert import CertManager, CredentialManager
+from distributed_state_network.util.key_manager import CertManager, CredentialManager
 from distributed_state_network.util.aes import aes_encrypt, aes_decrypt, generate_aes_key
 
 TICK_INTERVAL = 3
@@ -34,8 +34,8 @@ class DSNode:
         self.cert_manager = CertManager(config.node_id)
         self.cred_manager = CredentialManager(config.node_id)
 
-        self.cert_manager.generate_certs()
-        self.cred_manager.generate_certs()
+        self.cert_manager.generate_keys()
+        self.cred_manager.generate_keys()
         
         self.node_states = {
             self.config.node_id: NodeState.create(self.config.node_id, Endpoint("127.0.0.1", config.port), version, time.time(), self.cred_manager.my_private(), { })
@@ -79,7 +79,6 @@ class DSNode:
         return self.send_request(con, path, payload, verify)
 
     def send_request(self, con: Endpoint, path: str, payload: bytes, verify, retries: int = 0) -> Tuple[requests.Response, bytes]:
-        res = None
         try:
             # Always send a ping first to throw an error if https validation does not work
             requests.post(f'https://{con.to_string()}/ping', data=self.encrypt_data(payload), verify=verify, timeout=2)
@@ -88,7 +87,7 @@ class DSNode:
             self.logger.error(e)
             time.sleep(1)
             if retries < 2:
-                self.send_request(con, path, payload, verify, retries + 1)
+                return self.send_request(con, path, payload, verify, retries + 1)
             else:
                 raise RequestException(f'{path.upper()} => {con.to_string()} (no response)')
         return self.parse_response(con, path, res)
@@ -113,7 +112,7 @@ class DSNode:
         return aes_decrypt(self.get_aes_key(), data)
 
     def request_peers(self, node_id: str):
-        res, content = self.send_request_to_node(node_id, 'peers', self.config.node_id.encode('utf-8'), self.cert_manager.cert_path(node_id))
+        res, content = self.send_request_to_node(node_id, 'peers', self.config.node_id.encode('utf-8'), self.cert_manager.public_path(node_id))
         peers = json.loads(content.decode('utf-8'))
         for key in peers:
             if key == self.config.node_id:
@@ -138,7 +137,7 @@ class DSNode:
         self.logger.info(f"HELLO => {con.to_string()}")
 
         payload = self.my_hello_packet().to_bytes()
-        res, content = self.send_request(con, 'hello', payload, False)
+        _, content = self.send_request(con, 'hello', payload, False)
         self.handle_hello(content)
 
         pkt = HelloPacket.from_bytes(content)
@@ -152,26 +151,31 @@ class DSNode:
             self.logger.error(msg)
             raise Exception(505) # Version not supported
 
-        self.cert_manager.ensure_cert(pkt.node_id, pkt.https_certificate)
-        self.cred_manager.ensure_cert(pkt.node_id, pkt.ecdsa_public_key)
+        self.cert_manager.ensure_public(pkt.node_id, pkt.https_certificate)
+        self.cred_manager.ensure_public(pkt.node_id, pkt.ecdsa_public_key)
         if pkt.node_id not in self.node_states:
-            self.node_states[pkt.node_id] = NodeState(pkt.node_id, pkt.connection, pkt.version, 0, None, { })
+            self.node_states[pkt.node_id] = NodeState(pkt.node_id, pkt.connection, pkt.version, 0, b'', { })
 
         return self.my_hello_packet().to_bytes()
 
     def my_hello_packet(self) -> HelloPacket:
-        ecdsa_public_key = self.cred_manager.read_cert(self.config.node_id)
-        return HelloPacket(self.my_version(), self.config.node_id, self.my_con(), ecdsa_public_key, self.cert_manager.my_cert())
+        return HelloPacket(
+            self.my_version(), 
+            self.config.node_id, 
+            self.my_con(), 
+            self.cred_manager.my_public(), 
+            self.cert_manager.my_public()
+        )
 
     def send_ping(self, node_id: str):     
         try:
-            self.send_request_to_node(node_id, 'ping', b' ', verify=self.cert_manager.cert_path(node_id))
+            self.send_request_to_node(node_id, 'ping', b' ', verify=self.cert_manager.public_path(node_id))
         except Exception as e:
             raise RequestException(f'PING => {node_id}: {e}')
 
     def send_update(self, node_id: str):
         self.logger.info(f"UPDATE => {node_id}")
-        return self.send_request_to_node(node_id, 'update', self.my_state().to_bytes(), self.cert_manager.cert_path(node_id))
+        return self.send_request_to_node(node_id, 'update', self.my_state().to_bytes(), self.cert_manager.public_path(node_id))
 
     def handle_update(self, data: bytes):
         pkt = NodeState.from_bytes(data)
@@ -185,7 +189,7 @@ class DSNode:
         if pkt.node_id in self.node_states and self.node_states[pkt.node_id].last_update > pkt.last_update:
             raise Exception(406) # Not acceptable
         
-        if not pkt.verify(self.cred_manager.read_cert(pkt.node_id)):
+        if not pkt.verify(self.cred_manager.read_public(pkt.node_id)):
             raise Exception(401) # Not authorized
         
         if pkt.node_id not in self.node_states:
@@ -203,7 +207,7 @@ class DSNode:
     def my_state(self):
         return self.node_states[self.config.node_id]
 
-    def bootstrap(self, con: Endpoint) -> bool:
+    def bootstrap(self, con: Endpoint):
         bootstrap_id = self.send_hello(con)
         self.request_peers(bootstrap_id)
 
@@ -228,17 +232,5 @@ class DSNode:
             return None
         return self.node_states[node_id].state_data[key]
 
-    def get_certificate(self, node_id: str) -> Optional[str]:
-        path = self.cert_manager.cert_path(node_id)
-        if not os.path.exists(path):
-            return None
-        return path
-
     def peers(self) -> List[str]:
         return list(self.node_states.keys())
-
-    def public_key_file(self) -> Optional[str]:
-        return self.get_certificate(self.config.node_id)
-
-    def private_key_file(self) -> Optional[str]:
-        return self.get_certificate(self.config.node_id).replace(".crt", ".key")
