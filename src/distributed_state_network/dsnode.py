@@ -9,7 +9,7 @@ from requests import RequestException
 from typing import Dict, Tuple, List, Optional
 
 from distributed_state_network.objects.endpoint import Endpoint
-from distributed_state_network.objects.packets import BootstrapPacket, HelloPacket
+from distributed_state_network.objects.hello_packet import HelloPacket
 from distributed_state_network.objects.state import NodeState
 from distributed_state_network.objects.config import DSNodeConfig
 
@@ -109,60 +109,63 @@ class DSNode:
 
         return res, decrypted_data
 
-
     def encrypt_data(self, data: bytes) -> bytes:
         return aes_encrypt(self.get_aes_key(), data)
 
     def decrypt_data(self, data: bytes) -> bytes:
         return aes_decrypt(self.get_aes_key(), data)
 
-    def send_hello(self, node_id: str):
-        self.logger.info(f"HELLO => {node_id}")
+    def request_peers(self, node_id: str):
+        res, content = self.send_request_to_node(node_id, 'peers', self.config.node_id.encode('utf-8'), self.cert_manager.cert_path(node_id))
+        peers = json.loads(content.decode('utf-8'))
+        for key in peers:
+            if key in self.node_states:
+                continue
+            self.send_hello(Endpoint.from_json(peers[key]))
 
-        payload = HelloPacket(self.config.node_id, self.cert_manager.my_cert()).to_bytes()
-        res, content = self.send_request_to_node(node_id, 'hello', payload, False)
+    def handle_peers(self, data: bytes):
+        from_node_id = data.decode('utf-8')
+        if from_node_id not in self.node_states:
+            raise Exception("Not Authorized")
+        
+        peers = { }
+        for key in self.node_states.keys():
+            peers[key] = self.node_states[key].connection.to_json()
+        
+        return json.dumps(peers).encode('utf-8')
 
-        self.cert_manager.ensure_cert(node_id, content)
+    def send_hello(self, con: Endpoint):
+        self.logger.info(f"HELLO => {con.to_string()}")
+
+        payload = self.my_hello_packet().to_bytes()
+        res, content = self.send_request(con, 'hello', payload, False)
+        self.handle_hello(content)
+
+        pkt = HelloPacket.from_bytes(content)
+        return pkt.node_id
 
     def handle_hello(self, data: bytes) -> bytes:
         pkt = HelloPacket.from_bytes(data)
-        self.cert_manager.ensure_cert(pkt.node_id, pkt.https_certificate)
+        self.logger.info(f"Received HELLO from {pkt.node_id}")
+        if pkt.version != self.my_version():
+            msg = f"HELLO => {pkt.node_id} (Version mismatch \"{pkt.version}\" != \"{self.my_version()}\")"
+            self.logger.error(msg)
+            raise Exception("Version Mismatch")
 
-        return self.cert_manager.my_cert()
+        self.cert_manager.ensure_cert(pkt.node_id, pkt.https_certificate)
+        if pkt.node_id not in self.node_states or (pkt.node_id in self.node_states and pkt.state.last_update > self.node_states[pkt.node_id].last_update):
+            self.node_states[pkt.node_id] = pkt.state
+
+        return self.my_hello_packet().to_bytes()
+
+    def my_hello_packet(self) -> HelloPacket:
+        return HelloPacket(self.my_version(), self.config.node_id, self.cert_manager.my_cert(), self.my_state())
 
     def send_ping(self, node_id: str):     
         try:
             self.send_request_to_node(node_id, 'ping', b' ', verify=self.cert_manager.cert_path(node_id))
         except Exception as e:
             raise RequestException(f'PING => {node_id}: {e}')
-
-    def send_bootstrap(self, endpoint: Endpoint) -> str:
-        cert_bytes = self.cert_manager.read_cert(self.config.node_id)
-        state = { self.config.node_id: self.my_state() }
-        payload = BootstrapPacket(self.my_version(), self.config.node_id, cert_bytes, state).to_bytes()
-        self.logger.info(f"BOOTSTRAP => {endpoint.to_string()}")
-        
-        res, content = self.send_request(endpoint, 'bootstrap', payload, False)
-        pkt = BootstrapPacket.from_bytes(content)
-    
-        self.node_states = pkt.state_data
-        self.cert_manager.ensure_cert(pkt.node_id, pkt.https_certificate)
-
-        return pkt.node_id
-
-    def handle_bootstrap(self, data: bytes) -> bytes:
-        pkt = BootstrapPacket.from_bytes(data)
-
-        if pkt.version != self.my_version():
-            msg = f"BOOTSTRAP => {pkt.node_id} (Version mismatch \"{pkt.version}\" != \"{self.my_version()}\")"
-            self.logger.error(msg)
-            raise Exception("Version Mismatch")
-
-        self.cert_manager.ensure_cert(pkt.node_id, pkt.https_certificate)
-        self.node_states[pkt.node_id] = pkt.state_data[pkt.node_id]
-
-        my_cert = self.cert_manager.read_cert(self.config.node_id)
-        return BootstrapPacket(self.my_version(), self.config.node_id, my_cert, self.node_states).to_bytes()
 
     def send_update(self, node_id: str):
         self.logger.info(f"UPDATE => {node_id}")
@@ -194,16 +197,9 @@ class DSNode:
 
     def bootstrap(self, con: Dict) -> bool:
         endpoint = Endpoint.from_json(con)
-        bootstrap_id = self.send_bootstrap(endpoint)
-        for n in list(self.node_states.keys())[:]:
-            if n != self.config.node_id and n != bootstrap_id:
-                try:
-                    self.send_hello(n)
-                    self.send_update(n)
-                except RequestException as e:
-                    self.logger.error(e)
-                    del self.node_states[n]
-                
+        bootstrap_id = self.send_hello(endpoint)
+        self.request_peers(bootstrap_id)
+
     def connection_from_node(self, node_id: str) -> Endpoint:
         if node_id not in self.node_states:
             raise Exception(f"could not find connection for {node_id}")

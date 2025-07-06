@@ -16,7 +16,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), './src'))
 from distributed_state_network import DSNodeServer, Endpoint, DSNodeConfig
 
 from distributed_state_network.objects.state import NodeState
-from distributed_state_network.objects.packets import HelloPacket, BootstrapPacket
+from distributed_state_network.objects.hello_packet import HelloPacket
 
 from distributed_state_network.util.cert import CertManager
 from distributed_state_network.util.aes import generate_aes_key
@@ -223,7 +223,7 @@ class TestNode(unittest.TestCase):
         connector_0 = spawn_node("connector-0", [bootstrap.node.my_con().to_json()])
         connector_0.stop()
         connector_1 = spawn_node("connector-1", [bootstrap.node.my_con().to_json()])
-        self.assertEqual(connector_1.node.peers(), ["bootstrap", "connector-1"])
+        self.assertEqual(sorted(connector_1.node.peers()), ["bootstrap", "connector-1"])
 
     def test_connection_from_node(self):
         n0 = spawn_node("node-0")
@@ -264,18 +264,6 @@ class TestNode(unittest.TestCase):
         self.assertEqual(config_dict["bootstrap_nodes"][0]["port"], config.bootstrap_nodes[0].port)
 
     def test_bad_packets(self):
-        try:
-            BootstrapPacket.from_bytes(b'')
-            self.fail("Should throw error on bad parse")
-        except Exception as e:
-            print(e)
-
-        try:
-            BootstrapPacket.from_bytes(b'Random Data')
-            self.fail("Should throw error on bad parse")
-        except Exception as e:
-            print(e)
-
         try:
             HelloPacket.from_bytes(b'')
             self.fail("Should throw error on bad parse")

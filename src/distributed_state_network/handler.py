@@ -48,11 +48,12 @@ class DSNodeHandler(BaseHTTPRequestHandler):
             respond_bytes(self, b'Not Authorized')
             return
 
-        if self.path == "/bootstrap":
-            graceful_fail(self, body, self.server.node.handle_bootstrap)
 
-        elif self.path == "/hello":
+        if self.path == "/hello":
             graceful_fail(self, body, self.server.node.handle_hello)
+        
+        elif self.path == "/peers":
+            graceful_fail(self, body, self.server.node.handle_peers)
 
         elif self.path == "/update":
             graceful_fail(self, body, self.server.node.handle_update)
