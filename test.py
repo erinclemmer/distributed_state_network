@@ -344,6 +344,7 @@ class TestNode(unittest.TestCase):
     # TODO: Test https validation
     # Ensure that if a node tries to connect with a previously known node id and a new certificate it is kicked off the network
     # We should not be able to send an update to a node with a https certificate that does not match
+    # Don't send state data back from the bootstrap node that is not for the bootstrap node, send back NodeState objects with empty states and a very old update time
 
 if __name__ == "__main__":
     unittest.main()

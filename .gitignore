@@ -5,4 +5,5 @@ certs/
 test.key
 .coverage
 count.py
+appended.py
 py_line_count_history.jsonl
