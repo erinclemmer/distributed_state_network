@@ -73,12 +73,12 @@ def serve(httpd):
 class DSNodeServer(HTTPServer):
     def __init__(
         self, 
-        config_dict: Dict
+        config: DSNodeConfig
     ):
-        super().__init__(("127.0.0.1", config_dict["port"]), DSNodeHandler)
-        self.config = DSNodeConfig.from_dict(config_dict)
-        self.node = DSNode(self.config, VERSION)
-        self.node.logger.info(f'Started DSNode on port {self.config.port}')
+        super().__init__(("127.0.0.1", config.port), DSNodeHandler)
+        self.config = config
+        self.node = DSNode(config, VERSION)
+        self.node.logger.info(f'Started DSNode on port {config.port}')
 
     def stop(self):
         self.node.shutting_down = True
@@ -93,8 +93,8 @@ class DSNodeServer(HTTPServer):
             f.write(key)
 
     @staticmethod 
-    def start(config_dict: DSNodeConfig) -> 'NodeServer':
-        n = DSNodeServer(config_dict)
+    def start(config: DSNodeConfig) -> 'NodeServer':
+        n = DSNodeServer(config)
         ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         cert_path = n.node.cert_manager.cert_path(n.config.node_id)
         ssl_context.load_cert_chain(

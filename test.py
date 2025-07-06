@@ -37,12 +37,12 @@ def serve(httpd):
 def spawn_node(node_id: str, bootstrap_nodes: List[Dict] = []):
     global current_port
     current_port += 1
-    n = DSNodeServer.start({
+    n = DSNodeServer.start(DSNodeConfig.from_dict({
         "node_id": node_id,
         "port": current_port,
         "aes_key_file": key_file,
         "bootstrap_nodes": bootstrap_nodes
-    })
+    }))
     global nodes
     nodes.append(n)
     return n
