@@ -34,7 +34,7 @@ def graceful_fail(httpd: BaseHTTPRequestHandler, body: bytes, fn: Callable):
             respond_bytes(httpd, b'')
     except Exception as e:
         httpd.server.node.logger.error(e)
-        respond_bytes(httpd, e.args[0].encode('utf-8'))
+        respond_bytes(httpd, str(e.args[0]).encode('utf-8'))
 
 class DSNodeHandler(BaseHTTPRequestHandler):
     server: "NodeServer"

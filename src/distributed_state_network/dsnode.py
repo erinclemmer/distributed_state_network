@@ -14,7 +14,7 @@ from distributed_state_network.objects.state import NodeState
 from distributed_state_network.objects.config import DSNodeConfig
 
 from distributed_state_network.util import get_dict_hash
-from distributed_state_network.util.cert import CertManager
+from distributed_state_network.util.cert import CertManager, CredentialManager
 from distributed_state_network.util.aes import aes_encrypt, aes_decrypt, generate_aes_key
 
 TICK_INTERVAL = 3
@@ -30,11 +30,19 @@ class DSNode:
             version: str,
         ):
         self.config = config
-        self.node_states = {
-            self.config.node_id: NodeState(self.config.node_id, Endpoint("127.0.0.1", config.port), version, time.time(), { })
-        }
+        
         self.cert_manager = CertManager(config.node_id)
-        CertManager.generate_certs(config.node_id)
+        self.cred_manager = CredentialManager(config.node_id)
+
+        self.cert_manager.generate_certs()
+        self.cred_manager.generate_certs()
+        
+        self.node_states = {
+            self.config.node_id: NodeState(self.config.node_id, Endpoint("127.0.0.1", config.port), version, time.time(), None, { })
+        }
+
+        self.node_states[self.config.node_id].sign(self.cred_manager.my_private())
+        
         self.logger = logging.getLogger("DSN: " + config.node_id)
         if not os.path.exists(config.aes_key_file):
             raise Exception(f"Could not find aes key file in {config.aes_key_file}")
@@ -119,9 +127,12 @@ class DSNode:
         res, content = self.send_request_to_node(node_id, 'peers', self.config.node_id.encode('utf-8'), self.cert_manager.cert_path(node_id))
         peers = json.loads(content.decode('utf-8'))
         for key in peers:
-            if key in self.node_states:
+            if key == self.config.node_id:
                 continue
-            self.send_hello(Endpoint.from_json(peers[key]))
+            if key not in self.node_states:
+                self.send_hello(Endpoint.from_json(peers[key]))
+            _, node_state = self.send_update(key)
+            self.handle_update(node_state)
 
     def handle_peers(self, data: bytes):
         from_node_id = data.decode('utf-8')
@@ -153,13 +164,15 @@ class DSNode:
             raise Exception("Version Mismatch")
 
         self.cert_manager.ensure_cert(pkt.node_id, pkt.https_certificate)
-        if pkt.node_id not in self.node_states or (pkt.node_id in self.node_states and pkt.state.last_update > self.node_states[pkt.node_id].last_update):
-            self.node_states[pkt.node_id] = pkt.state
+        self.cred_manager.ensure_cert(pkt.node_id, pkt.ecdsa_public_key)
+        if pkt.node_id not in self.node_states:
+            self.node_states[pkt.node_id] = NodeState(pkt.node_id, pkt.connection, pkt.version, 0, None, { })
 
         return self.my_hello_packet().to_bytes()
 
     def my_hello_packet(self) -> HelloPacket:
-        return HelloPacket(self.my_version(), self.config.node_id, self.cert_manager.my_cert(), self.my_state())
+        ecdsa_public_key = self.cred_manager.read_cert(self.config.node_id)
+        return HelloPacket(self.my_version(), self.config.node_id, self.my_con(), ecdsa_public_key, self.cert_manager.my_cert())
 
     def send_ping(self, node_id: str):     
         try:
@@ -169,10 +182,11 @@ class DSNode:
 
     def send_update(self, node_id: str):
         self.logger.info(f"UPDATE => {node_id}")
-        self.send_request_to_node(node_id, 'update', self.my_state().to_bytes(), self.cert_manager.cert_path(node_id))
+        return self.send_request_to_node(node_id, 'update', self.my_state().to_bytes(), self.cert_manager.cert_path(node_id))
 
     def handle_update(self, data: bytes):
         pkt = NodeState.from_bytes(data)
+        self.logger.info(f"Received UPDATE from {pkt.node_id}")
         
         # ignore if we accidentally sent an update to ourselves
         if pkt.node_id == self.config.node_id:
@@ -182,12 +196,17 @@ class DSNode:
         if pkt.node_id in self.node_states and self.node_states[pkt.node_id].last_update > pkt.last_update:
             raise Exception("Received outdated update packet")
         
-        if not pkt.node_id in self.node_states:
+        if not pkt.verify(self.cred_manager.read_cert(pkt.node_id)):
+            raise Exception("Not Authorized")
+        
+        if pkt.node_id not in self.node_states:
             self.node_states[pkt.node_id] = pkt
             return
 
         if get_dict_hash(self.node_states[pkt.node_id].state_data) != get_dict_hash(pkt.state_data):
             self.node_states[pkt.node_id] = pkt
+
+        return self.my_state().to_bytes()
 
     def my_version(self):
         return self.my_state().version
@@ -207,7 +226,7 @@ class DSNode:
         return state.connection
 
     def update_data(self, key: str, val: str):
-        self.node_states[self.config.node_id].update_state(key, val)
+        self.node_states[self.config.node_id].update_state(key, val, self.cred_manager.my_private())
         for key in list(self.node_states.keys())[:]:
             if key == self.config.node_id:
                 continue

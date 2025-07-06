@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling", "cryptography", "logging", "ipaddress", "requests"]
+requires = ["hatchling", "cryptography", "logging", "ipaddress", "requests", "ecdsa"]
 build-backend = "hatchling.build"
 
 [project]
@@ -25,7 +25,8 @@ dependencies = [
     "cryptography",
     "logging",
     "ipaddress",
-    "requests"
+    "requests",
+    "ecdsa"
 ]
 
 [project.urls]

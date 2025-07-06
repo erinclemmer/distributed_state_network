@@ -3,27 +3,40 @@ from io import BytesIO
 from typing import Dict
 
 from distributed_state_network.objects.state import NodeState
+from distributed_state_network.objects.endpoint import Endpoint
+
+from distributed_state_network.util.ecdsa import verify_signature
 from distributed_state_network.util.byte_helper import ByteHelper
 from distributed_state_network.util import bytes_to_int, int_to_bytes
 
 class HelloPacket:
     version: str
     node_id: str
+    connection: Endpoint
+    ecdsa_public_key: bytes
     https_certificate: bytes
-    state: NodeState
 
-    def __init__(self, version: str, node_id: str, https_certificate: bytes, state: NodeState):
+    def __init__(
+        self, 
+        version: str, 
+        node_id: str, 
+        connection: Endpoint,
+        ecdsa_public_key: bytes,
+        https_certificate: bytes
+    ):
         self.version = version
         self.node_id = node_id
+        self.connection = connection
+        self.ecdsa_public_key = ecdsa_public_key
         self.https_certificate = https_certificate
-        self.state = state
 
     def to_bytes(self):
         bts = ByteHelper()
         bts.write_string(self.version)
         bts.write_string(self.node_id)
+        bts.write_bytes(self.connection.to_bytes())
+        bts.write_bytes(self.ecdsa_public_key)
         bts.write_bytes(self.https_certificate)
-        bts.write_bytes(self.state.to_bytes())
         
         return bts.get_bytes()
 
@@ -32,11 +45,11 @@ class HelloPacket:
         bts = ByteHelper(data)
         version = bts.read_string()
         node_id = bts.read_string()
+        connection = Endpoint.from_bytes(bts.read_bytes())
+        ecdsa_public_key = bts.read_bytes()
         https_certificate = bts.read_bytes()
 
-        if version == '' or node_id == '' or https_certificate == b'':
+        if version == '' or node_id == '' or ecdsa_public_key == b'' or https_certificate == b'':
             raise Exception("Bad Request Data")
-        
-        state = NodeState.from_bytes(bts.read_bytes())
 
-        return HelloPacket(version, node_id, https_certificate, state)
+        return HelloPacket(version, node_id, connection, ecdsa_public_key, https_certificate)

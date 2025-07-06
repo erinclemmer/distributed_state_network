@@ -201,16 +201,29 @@ class TestNode(unittest.TestCase):
     def test_bad_update(self):
         bootstrap = spawn_node("bootstrap")
         connector = spawn_node("connector", [bootstrap.node.my_con().to_json()])
-
-        state = NodeState("bootstrap", bootstrap.node.my_con(), bootstrap.node.my_version(), time.time(), { })
+        state = NodeState("bootstrap", bootstrap.node.my_con(), bootstrap.node.my_version(), time.time(), None, { })
+        state.sign(bootstrap.node.cred_manager.my_private())
         try: 
             bootstrap.node.handle_update(state.to_bytes())
             self.fail("Node should not handle updates for itself")
         except Exception as e:
             print(e)
             self.assertEqual(e.args[0], "Received update for our own node")
+        state = NodeState("connector", bootstrap.node.my_con(), bootstrap.node.my_version(), time.time(), b'', { })
+        try:
+            bootstrap.node.handle_update(state.to_bytes())
+            self.fail("Should not accepted unsigned packets")
+        except Exception as e:
+            print(e)
+            self.assertEqual(e.args[0], "Not Authorized")
+
         time_before = time.time() - 10
-        state = NodeState("connector", bootstrap.node.my_con(), bootstrap.node.my_version(), time_before, { })
+        state = NodeState("connector", bootstrap.node.my_con(), bootstrap.node.my_version(), time.time(), b'', { "a": 1 })
+        state.sign(connector.node.cred_manager.my_private())
+        bootstrap.node.handle_update(state.to_bytes())
+
+        state = NodeState("connector", bootstrap.node.my_con(), bootstrap.node.my_version(), time_before, b'', { "a": 2 })
+        state.sign(connector.node.cred_manager.my_private())
         try: 
             bootstrap.node.handle_update(state.to_bytes())
             self.fail("Node should only accept update packets that are newer than the version we have")
@@ -314,7 +327,7 @@ class TestNode(unittest.TestCase):
         if os.path.exists('certs'):
             shutil.rmtree('certs')
         cm = CertManager('test')
-        CertManager.generate_certs("test")
+        cm.generate_certs()
         try:
             cm.ensure_cert("test", b'WRONG CERTIFICATE')
             self.fail("Should throw error for certificate mismatch")
@@ -330,6 +343,7 @@ class TestNode(unittest.TestCase):
         self.assertFalse(cm.verify_cert('test', b'BAD KEY'))
 
     # TODO: Test https validation
+    # Test node id authentication
     # Ensure that if a node tries to connect with a previously known node id and a new certificate it is kicked off the network
     # We should not be able to send an update to a node with a https certificate that does not match
     # Don't send state data back from the bootstrap node that is not for the bootstrap node, send back NodeState objects with empty states and a very old update time

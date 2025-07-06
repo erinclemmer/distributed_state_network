@@ -2,6 +2,7 @@ __pycache__/
 env/
 certs/
 .vscode/
+credentials/
 test.key
 .coverage
 count.py

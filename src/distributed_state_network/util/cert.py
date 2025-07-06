@@ -1,28 +1,41 @@
 import os
 import logging
+from typing import Callable, Tuple
 
+from distributed_state_network.util.ecdsa import generate_key_pair
 from distributed_state_network.util.https import generate_cert
 
-class CertManager:
-    def __init__(self, node_id: str):
+class KeyManager:
+    def __init__(
+        self, 
+        node_id: str, 
+        folder: str,
+        public_extension: str,
+        private_extension: str,
+        generate_keys: Callable[[], Tuple[bytes, bytes]]
+    ):
         self.node_id = node_id
+        self.folder = folder
+        self.public_extension = public_extension
+        self.private_extension = private_extension
+        self.generate_keys = generate_keys
 
     def write_cert(self, node_id: str, cert: bytes):
-        if not os.path.exists('certs'):
-            os.mkdir('certs')
-        if not os.path.exists(f'certs/{node_id}'):
-            os.mkdir(f'certs/{node_id}')
-        with open(f'certs/{self.node_id}/{node_id}.crt', 'wb') as f:
+        if not os.path.exists(self.folder):
+            os.mkdir(self.folder)
+        if not os.path.exists(f'{self.folder}/{node_id}'):
+            os.mkdir(f'{self.folder}/{node_id}')
+        with open(f'{self.folder}/{self.node_id}/{node_id}.{self.public_extension}', 'wb') as f:
             f.write(cert)
 
     def read_cert(self, node_id: str) -> bytes:
-        if not os.path.exists(f'certs/{self.node_id}/{node_id}.crt'):
+        if not os.path.exists(f'{self.folder}/{self.node_id}/{node_id}.{self.public_extension}'):
             return None
-        with open(f'certs/{self.node_id}/{node_id}.crt', 'rb') as f:
+        with open(f'{self.folder}/{self.node_id}/{node_id}.{self.public_extension}', 'rb') as f:
             return f.read()
 
     def has_cert(self, node_id: str) -> bool:
-        return os.path.exists(f'certs/{self.node_id}/{node_id}.crt')
+        return os.path.exists(f'{self.folder}/{self.node_id}/{node_id}.{self.public_extension}')
 
     def ensure_cert(self, node_id: str, cert: bytes):
         if self.has_cert(node_id):
@@ -32,7 +45,7 @@ class CertManager:
             self.write_cert(node_id, cert)
 
     def cert_path(self, node_id: str):
-        return f"certs/{self.node_id}/{node_id}.crt"
+        return f"{self.folder}/{self.node_id}/{node_id}.{self.public_extension}"
 
     def verify_cert(self, node_id: str, cert: bytes):
         if not self.has_cert(node_id):
@@ -42,17 +55,30 @@ class CertManager:
     def my_cert(self) -> bytes:
         return self.read_cert(self.node_id)
 
-    @staticmethod
-    def generate_certs(node_id: str):
-        if os.path.exists(f'certs/{node_id}/{node_id}.key'):
+    def my_private(self):
+        if not os.path.exists(f'{self.folder}/{self.node_id}/{self.node_id}.{self.private_extension}'):
+            return None
+        with open(f'{self.folder}/{self.node_id}/{self.node_id}.{self.private_extension}', 'rb') as f:
+            return f.read()
+
+    def generate_certs(self):
+        if os.path.exists(f'{self.folder}/{self.node_id}/{self.node_id}.{self.private_extension}'):
             return
-        logging.getLogger("LM NET: " + node_id).info("Generating self-signed certificate ...")
-        cert_bytes, key_bytes = generate_cert()
-        if not os.path.exists('certs'):
-            os.mkdir('certs')
-        if not os.path.exists(f'certs/{node_id}'):
-            os.mkdir(f'certs/{node_id}')
-        with open(f'certs/{node_id}/{node_id}.crt', 'wb') as f:
+        logging.getLogger("DSN: " + self.node_id).info("Generating Keys ...")
+        cert_bytes, key_bytes = self.generate_keys()
+        if not os.path.exists(self.folder):
+            os.mkdir(self.folder)
+        if not os.path.exists(f'{self.folder}/{self.node_id}'):
+            os.mkdir(f'{self.folder}/{self.node_id}')
+        with open(f'{self.folder}/{self.node_id}/{self.node_id}.{self.public_extension}', 'wb') as f:
             f.write(cert_bytes)
-        with open(f'certs/{node_id}/{node_id}.key', 'wb') as f:
+        with open(f'{self.folder}/{self.node_id}/{self.node_id}.{self.private_extension}', 'wb') as f:
             f.write(key_bytes)
+
+class CertManager(KeyManager):
+    def __init__(self, node_id: str):
+        KeyManager.__init__(self, node_id, "certs", "crt", "key", generate_cert)
+
+class CredentialManager(KeyManager):
+    def __init__(self, node_id: str):
+        KeyManager.__init__(self, node_id, "credentials", "pub", "key", generate_key_pair)
