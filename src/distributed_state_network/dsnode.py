@@ -21,6 +21,7 @@ TICK_INTERVAL = 3
 
 class DSNode:
     config: DSNodeConfig
+    address_book: Dict[str, Endpoint]
     node_states: Dict[str, NodeState]
     shutting_down: bool = False
 
@@ -38,7 +39,11 @@ class DSNode:
         self.cred_manager.generate_keys()
         
         self.node_states = {
-            self.config.node_id: NodeState.create(self.config.node_id, Endpoint("127.0.0.1", config.port), version, time.time(), self.cred_manager.my_private(), { })
+            self.config.node_id: NodeState.create(self.config.node_id, version, time.time(), self.cred_manager.my_private(), { })
+        }
+
+        self.address_book = {
+            self.config.node_id: Endpoint("127.0.0.1", config.port)
         }
         
         self.logger = logging.getLogger("DSN: " + config.node_id)
@@ -117,19 +122,24 @@ class DSNode:
         for key in peers:
             if key == self.config.node_id:
                 continue
+            
+            connection = Endpoint.from_json(peers[key])
+            self.address_book[key] = connection
+            
             if key not in self.node_states:
-                self.send_hello(Endpoint.from_json(peers[key]))
+                self.send_hello(connection)
+            
             _, node_state = self.send_update(key)
             self.handle_update(node_state)
 
     def handle_peers(self, data: bytes):
         from_node_id = data.decode('utf-8')
-        if from_node_id not in self.node_states:
+        if from_node_id not in self.address_book:
             raise Exception(401) # Not Authorized
         
         peers = { }
-        for key in self.node_states.keys():
-            peers[key] = self.node_states[key].connection.to_json()
+        for key in self.address_book.keys():
+            peers[key] = self.address_book[key].to_json()
         
         return json.dumps(peers).encode('utf-8')
 
@@ -153,8 +163,12 @@ class DSNode:
 
         self.cert_manager.ensure_public(pkt.node_id, pkt.https_certificate)
         self.cred_manager.ensure_public(pkt.node_id, pkt.ecdsa_public_key)
+        
+        if pkt.node_id not in self.address_book:
+            self.address_book[pkt.node_id] = pkt.connection
+
         if pkt.node_id not in self.node_states:
-            self.node_states[pkt.node_id] = NodeState(pkt.node_id, pkt.connection, pkt.version, 0, b'', { })
+            self.node_states[pkt.node_id] = NodeState(pkt.node_id, pkt.version, 0, b'', { })
 
         return self.my_hello_packet().to_bytes()
 
@@ -209,13 +223,15 @@ class DSNode:
 
     def bootstrap(self, con: Endpoint):
         bootstrap_id = self.send_hello(con)
+        self.address_book[bootstrap_id] = con
+        _, content = self.send_update(bootstrap_id)
+        self.handle_update(content)
         self.request_peers(bootstrap_id)
 
     def connection_from_node(self, node_id: str) -> Endpoint:
-        if node_id not in self.node_states:
+        if node_id not in self.address_book:
             raise Exception(f"could not find connection for {node_id}")
-        state = self.node_states[node_id]
-        return state.connection
+        return self.address_book[node_id]
 
     def update_data(self, key: str, val: str):
         self.node_states[self.config.node_id].update_state(key, val, self.cred_manager.my_private())

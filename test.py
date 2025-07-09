@@ -207,14 +207,14 @@ class TestNode(unittest.TestCase):
         connector = spawn_node("connector", [bootstrap.node.my_con().to_json()])
         bt_prv_key = bootstrap.node.cred_manager.my_private()
         cn_prv_key = connector.node.cred_manager.my_private()
-        state = NodeState.create("bootstrap", bootstrap.node.my_con(), bootstrap.node.my_version(), time.time(), bt_prv_key, { })
+        state = NodeState.create("bootstrap", bootstrap.node.my_version(), time.time(), bt_prv_key, { })
         try: 
             bootstrap.node.handle_update(state.to_bytes())
             self.fail("Node should not handle updates for itself")
         except Exception as e:
             print(e)
             self.assertEqual(e.args[0], 406)
-        state = NodeState("connector", bootstrap.node.my_con(), bootstrap.node.my_version(), time.time(), b'', { })
+        state = NodeState("connector", bootstrap.node.my_version(), time.time(), b'', { })
         try:
             bootstrap.node.handle_update(state.to_bytes())
             self.fail("Should not accepted unsigned packets")
@@ -223,10 +223,10 @@ class TestNode(unittest.TestCase):
             self.assertEqual(e.args[0], 401)
 
         time_before = time.time() - 10
-        state = NodeState.create("connector", bootstrap.node.my_con(), bootstrap.node.my_version(), time.time(), cn_prv_key, { "a": "1" })
+        state = NodeState.create("connector", bootstrap.node.my_version(), time.time(), cn_prv_key, { "a": "1" })
         bootstrap.node.handle_update(state.to_bytes())
 
-        state = NodeState.create("connector", bootstrap.node.my_con(), bootstrap.node.my_version(), time_before, cn_prv_key, { "a": "2" })
+        state = NodeState.create("connector", bootstrap.node.my_version(), time_before, cn_prv_key, { "a": "2" })
         try: 
             bootstrap.node.handle_update(state.to_bytes())
             self.fail("Node should only accept update packets that are newer than the version we have")
@@ -360,6 +360,7 @@ class TestNode(unittest.TestCase):
         connector = spawn_node("connector", [bootstrap.node.my_con().to_json()])
         connector.stop()
         connector = spawn_node("connector", [bootstrap.node.my_con().to_json()])
+        self.assertIn('connector', bootstrap.node.peers())
 
 if __name__ == "__main__":
     unittest.main()
