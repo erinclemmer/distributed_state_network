@@ -79,23 +79,16 @@ ecdsa_public_key: (bytes) the ecdsa public key for the node sending the packet
 Once node A receives the hello packet from node B it attempts to decrypt the packet using its aes key. If it fails then the authentication stops, but if it succeeds then node A saves node B's https certificate and ecdsa public keys for later use. The authentication will fail if a node tries to connect to the network with a previously known node ID but a different key. Node A responds to the hello request with the same packet schema that it received. 
 
 ## Peers request
-Now that nodes A and B have each others public keys they can securely communicate to each other. Once that happens node B can send a peers request to node A. This request will just return a dictionary of connections with each key relating to a node on the network and the values being their respective IP addresses and corresponding ports. Once node B retrieves this info from node A it sends hello packets to every node on the network to authenticate with them and let them know of node B's existence.
+Now that nodes A and B have each others public keys they can securely communicate to each other. Once that happens node B can send a peers request to node A. This request will just return a dictionary of connections with each key relating to a node on the network and the values of the dictionary being their respective IP addresses and corresponding ports. Once node B retrieves this info from node A it sends hello packets to every node on the network to authenticate with them and let them know of node B's existence.
 
 ## State Update
 After each hello packet in the bootstrap process we send a state update request that contains our startup state to the same node. This update request will return the current state of the node being requested. We use this returned data to set the current state for the requested node on node B. The schema for the state update packet is outlined below, this is exactly the same as the data that we store for that node:
 
 ```
 node_id: (string) node ID of the sending node
-connection: (Dictionary) ip address and port informationo fo rthe 
+ecdsa_signature: (bytes) the signature of the data for the packet signed by the sending node
+state_data: (Dictionary) the node's current state
+last_update: (DateTime) the time the node was last updated
 ```
 
-The `state_data` portion of the packet will contain the state information for all nodes in the network so that node B will have an updated view of the current network. Through this information it will also know the connection information to all the nodes in the network, but it needs to know the https certificates of each node in order to and ecdsa communicate withs
-### Hello Packet
-Once node B is authenticated with node A then it finds out about the existence of node C in the network through the `state_data` information. To be sure that we will always send data to the correct server we need to request the https certificate public key of node C. We do this with a hello packet. The schema for the hello packet is outlined below:
-
-```
-node_id: (string) the node ID for the node sending the packet
-https_certificate: (bytes) the https certificate for the node sending the packett
-```
-
-This is just a stripped down version of the bootstrap packet because we already know that node C is on the same version as node A since the authentication went through correctly. And we already know the state data for node C because 
+The ecsda signature is important so that we always know that a specific node id has a specific state. State informatin will never come from anywhere but the sending node and every update must be signed with its key.

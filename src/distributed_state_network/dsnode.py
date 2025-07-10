@@ -31,6 +31,7 @@ class DSNode:
             version: str,
         ):
         self.config = config
+        self.version = version
         
         self.cert_manager = CertManager(config.node_id)
         self.cred_manager = CredentialManager(config.node_id)
@@ -39,7 +40,7 @@ class DSNode:
         self.cred_manager.generate_keys()
         
         self.node_states = {
-            self.config.node_id: NodeState.create(self.config.node_id, version, time.time(), self.cred_manager.my_private(), { })
+            self.config.node_id: NodeState.create(self.config.node_id, time.time(), self.cred_manager.my_private(), { })
         }
 
         self.address_book = {
@@ -156,8 +157,8 @@ class DSNode:
     def handle_hello(self, data: bytes) -> bytes:
         pkt = HelloPacket.from_bytes(data)
         self.logger.info(f"Received HELLO from {pkt.node_id}")
-        if pkt.version != self.my_version():
-            msg = f"HELLO => {pkt.node_id} (Version mismatch \"{pkt.version}\" != \"{self.my_version()}\")"
+        if pkt.version != self.version:
+            msg = f"HELLO => {pkt.node_id} (Version mismatch \"{pkt.version}\" != \"{self.version}\")"
             self.logger.error(msg)
             raise Exception(505) # Version not supported
 
@@ -168,13 +169,13 @@ class DSNode:
             self.address_book[pkt.node_id] = pkt.connection
 
         if pkt.node_id not in self.node_states:
-            self.node_states[pkt.node_id] = NodeState(pkt.node_id, pkt.version, 0, b'', { })
+            self.node_states[pkt.node_id] = NodeState(pkt.node_id, 0, b'', { })
 
         return self.my_hello_packet().to_bytes()
 
     def my_hello_packet(self) -> HelloPacket:
         return HelloPacket(
-            self.my_version(), 
+            self.version, 
             self.config.node_id, 
             self.my_con(), 
             self.cred_manager.my_public(), 
@@ -214,9 +215,6 @@ class DSNode:
             self.node_states[pkt.node_id] = pkt
 
         return self.my_state().to_bytes()
-
-    def my_version(self):
-        return self.my_state().version
 
     def my_state(self):
         return self.node_states[self.config.node_id]
