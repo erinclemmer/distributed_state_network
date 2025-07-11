@@ -10,6 +10,7 @@ from typing import Dict, Tuple, List, Optional
 
 from distributed_state_network.objects.endpoint import Endpoint
 from distributed_state_network.objects.hello_packet import HelloPacket
+from distributed_state_network.objects.peers_packet import PeersPacket
 from distributed_state_network.objects.state import NodeState
 from distributed_state_network.objects.config import DSNodeConfig
 
@@ -118,7 +119,9 @@ class DSNode:
         return aes_decrypt(self.get_aes_key(), data)
 
     def request_peers(self, node_id: str):
-        res, content = self.send_request_to_node(node_id, 'peers', self.config.node_id.encode('utf-8'), self.cert_manager.public_path(node_id))
+        pkt = PeersPacket(self.config.node_id, None, { })
+        pkt.sign(self.cred_manager.my_private())
+        res, content = self.send_request_to_node(node_id, 'peers', pkt.to_bytes(), self.cert_manager.public_path(node_id))
         peers = json.loads(content.decode('utf-8'))
         for key in peers:
             if key == self.config.node_id:
@@ -134,15 +137,20 @@ class DSNode:
             self.handle_update(node_state)
 
     def handle_peers(self, data: bytes):
-        from_node_id = data.decode('utf-8')
-        if from_node_id not in self.address_book:
+        pkt = PeersPacket.from_bytes(data)
+        if pkt.node_id not in self.address_book:
             raise Exception(401) # Not Authorized
         
+        if not pkt.verify_signature(self.cred_manager.read_public(pkt.node_id)):
+            raise Exception(406) # Not Acceptable
+
         peers = { }
         for key in self.address_book.keys():
             peers[key] = self.address_book[key].to_json()
         
-        return json.dumps(peers).encode('utf-8')
+        pkt = PeersPacket(self.config.node_id, None, peers)
+        pkt.sign(self.my_private())
+        return pkt
 
     def send_hello(self, con: Endpoint):
         self.logger.info(f"HELLO => {con.to_string()}")
