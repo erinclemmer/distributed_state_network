@@ -2,23 +2,16 @@ from typing import Dict
 
 from distributed_state_network.objects.endpoint import Endpoint
 from distributed_state_network.util.byte_helper import ByteHelper
-from distributed_state_network.util.ecdsa import verify_signature, sign_message
+from distributed_state_network.objects.signed_packet import SignedPacket
 
-class PeersPacket:
+class PeersPacket(SignedPacket):
     node_id: str
-    ecdsa_signature: bytes
     connections: Dict[str, Endpoint]
 
     def __init__(self, node_id: str, ecdsa_signature: bytes, connections: Dict[str, Endpoint]):
+        super().__init__(ecdsa_signature)
         self.node_id = node_id
-        self.ecdsa_signature = ecdsa_signature
         self.connections = connections
-
-    def sign(self, private_key: bytes):
-        self.ecdsa_signature = sign_message(private_key, self.to_bytes(False))
-
-    def verify_signature(self, public_key: bytes):
-        self.ecdsa_signature = verify_signature(public_key, self.to_bytes(False), self.ecdsa_signature)
 
     def to_bytes(self, include_signature: bool = True) -> bytes:
         bts = ByteHelper()

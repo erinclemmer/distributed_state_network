@@ -7,13 +7,15 @@ from distributed_state_network.util.https import generate_cert
 
 class KeyManager:
     def __init__(
-        self, 
+        self,
+        key_type: str,
         node_id: str, 
         folder: str,
         public_extension: str,
         private_extension: str,
         gen_keys: Callable[[], Tuple[bytes, bytes]]
     ):
+        self.key_type = key_type
         self.node_id = node_id
         self.folder = folder
         self.public_extension = public_extension
@@ -64,7 +66,7 @@ class KeyManager:
     def generate_keys(self):
         if os.path.exists(f'{self.folder}/{self.node_id}/{self.node_id}.{self.private_extension}'):
             return
-        logging.getLogger("DSN: " + self.node_id).info("Generating Keys ...")
+        logging.getLogger("DSN: " + self.node_id).info(f"Generating {self.key_type} Keys ...")
         cert_bytes, key_bytes = self.gen_keys()
         if not os.path.exists(self.folder):
             os.mkdir(self.folder)
@@ -77,8 +79,8 @@ class KeyManager:
 
 class CertManager(KeyManager):
     def __init__(self, node_id: str):
-        KeyManager.__init__(self, node_id, "certs", "crt", "key", generate_cert)
+        KeyManager.__init__(self, "HTTPS", node_id, "certs", "crt", "key", generate_cert)
 
 class CredentialManager(KeyManager):
     def __init__(self, node_id: str):
-        KeyManager.__init__(self, node_id, "credentials", "pub", "key", generate_key_pair)
+        KeyManager.__init__(self, "ECDSA", node_id, "credentials", "pub", "key", generate_key_pair)

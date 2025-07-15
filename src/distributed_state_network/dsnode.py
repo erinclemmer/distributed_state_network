@@ -122,12 +122,15 @@ class DSNode:
         pkt = PeersPacket(self.config.node_id, None, { })
         pkt.sign(self.cred_manager.my_private())
         res, content = self.send_request_to_node(node_id, 'peers', pkt.to_bytes(), self.cert_manager.public_path(node_id))
-        peers = json.loads(content.decode('utf-8'))
-        for key in peers:
+        pkt = PeersPacket.from_bytes(content)
+        if not pkt.verify_signature(self.cred_manager.read_public(node_id)):
+            raise Exception("Could not verify peers packet")
+
+        for key in pkt.connections.keys():
             if key == self.config.node_id:
                 continue
             
-            connection = Endpoint.from_json(peers[key])
+            connection = Endpoint.from_json(pkt.connections[key])
             self.address_book[key] = connection
             
             if key not in self.node_states:
@@ -146,11 +149,11 @@ class DSNode:
 
         peers = { }
         for key in self.address_book.keys():
-            peers[key] = self.address_book[key].to_json()
+            peers[key] = self.address_book[key]
         
         pkt = PeersPacket(self.config.node_id, None, peers)
-        pkt.sign(self.my_private())
-        return pkt
+        pkt.sign(self.cred_manager.my_private())
+        return pkt.to_bytes()
 
     def send_hello(self, con: Endpoint):
         self.logger.info(f"HELLO => {con.to_string()}")
