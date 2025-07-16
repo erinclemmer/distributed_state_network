@@ -130,11 +130,10 @@ class DSNode:
             if key == self.config.node_id:
                 continue
             
-            connection = Endpoint.from_json(pkt.connections[key])
-            self.address_book[key] = connection
+            self.address_book[key] = pkt.connections[key]
             
             if key not in self.node_states:
-                self.send_hello(connection)
+                self.send_hello(self.address_book[key])
             
             _, node_state = self.send_update(key)
             self.handle_update(node_state)
@@ -185,13 +184,16 @@ class DSNode:
         return self.my_hello_packet().to_bytes()
 
     def my_hello_packet(self) -> HelloPacket:
-        return HelloPacket(
+        pkt = HelloPacket(
             self.version, 
             self.config.node_id, 
             self.my_con(), 
             self.cred_manager.my_public(), 
+            None,
             self.cert_manager.my_public()
         )
+        pkt.sign(self.cred_manager.my_private())
+        return pkt
 
     def send_ping(self, node_id: str):     
         try:

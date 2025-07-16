@@ -109,7 +109,6 @@ class DSNodeServer(HTTPServer):
                     n.node.bootstrap(bs)
                     break # Throws exception if connection is not made
                 except Exception as e:
-                    # print(e)
-                    raise e
+                    print(e)
 
         return n
