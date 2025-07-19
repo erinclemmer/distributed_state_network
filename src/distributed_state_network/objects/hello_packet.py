@@ -2,7 +2,6 @@ import json
 from io import BytesIO
 from typing import Dict
 
-from distributed_state_network.objects.state import NodeState
 from distributed_state_network.objects.endpoint import Endpoint
 
 from distributed_state_network.objects.signed_packet import SignedPacket

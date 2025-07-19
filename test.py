@@ -15,7 +15,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), './src'))
 
 from distributed_state_network import DSNodeServer, Endpoint, DSNodeConfig
 
-from distributed_state_network.objects.state import NodeState
+from distributed_state_network.objects.state_packet import StatePacket
 from distributed_state_network.objects.hello_packet import HelloPacket
 
 from distributed_state_network.util.key_manager import CertManager
@@ -207,14 +207,14 @@ class TestNode(unittest.TestCase):
         connector = spawn_node("connector", [bootstrap.node.my_con().to_json()])
         bt_prv_key = bootstrap.node.cred_manager.my_private()
         cn_prv_key = connector.node.cred_manager.my_private()
-        state = NodeState.create("bootstrap", time.time(), bt_prv_key, { })
+        state = StatePacket.create("bootstrap", time.time(), bt_prv_key, { })
         try: 
             bootstrap.node.handle_update(state.to_bytes())
             self.fail("Node should not handle updates for itself")
         except Exception as e:
             print(e)
             self.assertEqual(e.args[0], 406)
-        state = NodeState("connector", time.time(), b'', { })
+        state = StatePacket("connector", time.time(), b'', { })
         try:
             bootstrap.node.handle_update(state.to_bytes())
             self.fail("Should not accepted unsigned packets")
@@ -223,10 +223,10 @@ class TestNode(unittest.TestCase):
             self.assertEqual(e.args[0], 401)
 
         time_before = time.time() - 10
-        state = NodeState.create("connector", time.time(), cn_prv_key, { "a": "1" })
+        state = StatePacket.create("connector", time.time(), cn_prv_key, { "a": "1" })
         bootstrap.node.handle_update(state.to_bytes())
 
-        state = NodeState.create("connector", time_before, cn_prv_key, { "a": "2" })
+        state = StatePacket.create("connector", time_before, cn_prv_key, { "a": "2" })
         try: 
             bootstrap.node.handle_update(state.to_bytes())
             self.fail("Node should only accept update packets that are newer than the version we have")
@@ -287,13 +287,13 @@ class TestNode(unittest.TestCase):
             print(e)
 
         try:
-            NodeState.from_bytes(b'')
+            StatePacket.from_bytes(b'')
             self.fail("Should throw error on bad parse")
         except Exception as e:
             print(e)
 
         try:
-            NodeState.from_bytes(b'Random data')
+            StatePacket.from_bytes(b'Random data')
             self.fail("Should throw error on bad parse")
         except Exception as e:
             print(e)

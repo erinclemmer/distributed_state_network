@@ -11,7 +11,7 @@ from typing import Dict, Tuple, List, Optional
 from distributed_state_network.objects.endpoint import Endpoint
 from distributed_state_network.objects.hello_packet import HelloPacket
 from distributed_state_network.objects.peers_packet import PeersPacket
-from distributed_state_network.objects.state import NodeState
+from distributed_state_network.objects.state_packet import StatePacket
 from distributed_state_network.objects.config import DSNodeConfig
 
 from distributed_state_network.util import get_dict_hash
@@ -23,7 +23,7 @@ TICK_INTERVAL = 3
 class DSNode:
     config: DSNodeConfig
     address_book: Dict[str, Endpoint]
-    node_states: Dict[str, NodeState]
+    node_states: Dict[str, StatePacket]
     shutting_down: bool = False
 
     def __init__(
@@ -41,7 +41,7 @@ class DSNode:
         self.cred_manager.generate_keys()
         
         self.node_states = {
-            self.config.node_id: NodeState.create(self.config.node_id, time.time(), self.cred_manager.my_private(), { })
+            self.config.node_id: StatePacket.create(self.config.node_id, time.time(), self.cred_manager.my_private(), { })
         }
 
         self.address_book = {
@@ -179,7 +179,7 @@ class DSNode:
             self.address_book[pkt.node_id] = pkt.connection
 
         if pkt.node_id not in self.node_states:
-            self.node_states[pkt.node_id] = NodeState(pkt.node_id, 0, b'', { })
+            self.node_states[pkt.node_id] = StatePacket(pkt.node_id, 0, b'', { })
 
         return self.my_hello_packet().to_bytes()
 
@@ -206,7 +206,7 @@ class DSNode:
         return self.send_request_to_node(node_id, 'update', self.my_state().to_bytes(), self.cert_manager.public_path(node_id))
 
     def handle_update(self, data: bytes):
-        pkt = NodeState.from_bytes(data)
+        pkt = StatePacket.from_bytes(data)
         self.logger.info(f"Received UPDATE from {pkt.node_id}")
         
         # ignore if we accidentally sent an update to ourselves
@@ -217,7 +217,7 @@ class DSNode:
         if pkt.node_id in self.node_states and self.node_states[pkt.node_id].last_update > pkt.last_update:
             raise Exception(406) # Not acceptable
         
-        if not pkt.verify(self.cred_manager.read_public(pkt.node_id)):
+        if not pkt.verify_signature(self.cred_manager.read_public(pkt.node_id)):
             raise Exception(401) # Not authorized
         
         if pkt.node_id not in self.node_states:
