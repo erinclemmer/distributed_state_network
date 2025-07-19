@@ -32,6 +32,6 @@ dependencies = [
 [project.urls]
 Homepage = "https://github.com/erinclemmer/distributed_state_network"
 Issues = "https://github.com/erinclemmer/distributed_state_network/issues"
-
+ 
 [tool.hatch.build.targets.wheel]
 packages = ["src/distributed_state_network"]
