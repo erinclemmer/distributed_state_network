@@ -74,9 +74,7 @@ temperature = node.read_data("sensor_node", "temperature")
 connected_nodes = node.peers()
 ```
 
-## Real-World Examples
-
-### Distributed Temperature Monitoring
+## Example: Distributed Temperature Monitoring
 
 Create a network of temperature sensors that share readings:
 
@@ -104,21 +102,3 @@ for node_id in monitor.node.peers():
         temp = monitor.node.read_data(node_id, "temperature")
         print(f"{node_id}: {temp}°F")
 ```
-
-## Troubleshooting
-
-### Node Can't Connect
-- Verify the AES key file is identical on all nodes
-- Check firewall rules allow traffic on the configured port
-- Ensure bootstrap node address is reachable
-
-### State Not Updating
-- Confirm nodes show as connected with `node.peers()`
-- Check network latency between nodes
-- Verify no duplicate node IDs (each must be unique)
-
-## Performance Characteristics
-- State updates typically propagate in <100ms on local networks
-- Each node stores the complete state of all other nodes
-- Suitable for networks up to ~100 nodes
-- State values should be kept reasonably small (< 1MB per key)
