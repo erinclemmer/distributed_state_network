@@ -1,6 +1,5 @@
 import os
 import time
-import json
 import logging
 
 import requests
@@ -16,7 +15,7 @@ from distributed_state_network.objects.config import DSNodeConfig
 
 from distributed_state_network.util import get_dict_hash
 from distributed_state_network.util.key_manager import CertManager, CredentialManager
-from distributed_state_network.util.aes import aes_encrypt, aes_decrypt, generate_aes_key
+from distributed_state_network.util.aes import aes_encrypt, aes_decrypt
 
 TICK_INTERVAL = 3
 
@@ -60,7 +59,7 @@ class DSNode:
     def network_tick(self):
         time.sleep(TICK_INTERVAL)
         if self.shutting_down:
-            self.logger.info(f"Shutting down node")
+            self.logger.info("Shutting down node")
             return
         self.test_connections()
         threading.Thread(target=self.network_tick).start()
@@ -69,9 +68,10 @@ class DSNode:
         def remove(node_id: str):
             if node_id in self.node_states:
                 del self.node_states[node_id]
+                del self.address_book[node_id]
                 self.logger.info(f"PING failed for {node_id}, disconnecting...")
         for node_id in self.node_states.copy().keys():
-            if not node_id in self.node_states or node_id == self.config.node_id:
+            if node_id not in self.node_states or node_id == self.config.node_id:
                 continue
             try:
                 if self.shutting_down:
