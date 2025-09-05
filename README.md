@@ -54,26 +54,6 @@ DSN creates a peer-to-peer network where each node maintains its own state datab
 - Any node can read any other node's state instantly
 - All communication is encrypted with AES + ECDSA + HTTPS
 
-## API Reference
-
-### Node Methods
-
-**update_data(key, value)** - Update a key in this node's state
-```python
-node.update_data("sensor_reading", "42.0")
-```
-
-**read_data(node_id, key)** - Read a value from any node's state
-
-```python
-temperature = node.read_data("sensor_node", "temperature")
-```
-
-**peers()** - List all connected nodes
-```python
-connected_nodes = node.peers()
-```
-
 ## Example: Distributed Temperature Monitoring
 
 Create a network of temperature sensors that share readings:
@@ -102,3 +82,12 @@ for node_id in monitor.node.peers():
         temp = monitor.node.read_data(node_id, "temperature")
         print(f"{node_id}: {temp}°F")
 ```
+  
+### Documentation
+* [Usage Examples](./documentation/usage.md)  
+* [Protocol](./documentation/protocol.md)
+
+#### API Reference
+* [DSNodeServer](./documentation/ds-node-server.md)
+* [DSNode](./documentation/ds-node.md)
+* [DSNodeConfig](./documentation/ds-node-config.md)
