@@ -18,13 +18,14 @@ class DSNode:
 ### Constructor
 
 ```python
-node = DSNode(config, "0.0.3", disconnect_callback=on_disconnect)
+node = DSNode(config, "0.0.3", disconnect_callback=on_disconnect, update_callback=on_update)
 ```
 
 **Parameters:**
 - `config` (`DSNodeConfig`): Node configuration
 - `version` (`str`): Protocol version string for compatibility checking
 - `disconnect_callback` (`Optional[Callable]`): Callback function invoked when a peer disconnects
+- `update_callback` (`Optional[Callable]`): Callback function invoked when the state of node updates
 
 ### Key Methods
 

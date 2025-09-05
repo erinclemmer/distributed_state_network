@@ -29,7 +29,8 @@ class DSNode:
             self, 
             config: DSNodeConfig,
             version: str,
-            disconnect_callback: Optional[Callable] = None
+            disconnect_callback: Optional[Callable] = None,
+            update_callback: Optional[Callable] = None
         ):
         self.config = config
         self.version = version
@@ -50,6 +51,7 @@ class DSNode:
         
         self.logger = logging.getLogger("DSN: " + config.node_id)
         self.disconnect_cb = disconnect_callback
+        self.update_cb = update_callback
         if not os.path.exists(config.aes_key_file):
             raise Exception(f"Could not find aes key file in {config.aes_key_file}")
         threading.Thread(target=self.network_tick).start()
@@ -230,6 +232,9 @@ class DSNode:
 
         if get_dict_hash(self.node_states[pkt.node_id].state_data) != get_dict_hash(pkt.state_data):
             self.node_states[pkt.node_id] = pkt
+
+        if self.update_cb is not None:
+            self.update_cb()
 
         return self.my_state().to_bytes()
 

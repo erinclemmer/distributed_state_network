@@ -66,3 +66,19 @@ config = DSNodeConfig(
 
 server = DSNodeServer.start(config, disconnect_callback=handle_disconnect)
 ```
+
+### With Update Callback
+
+```python
+def handle_update():
+    print("A peer has updated!")
+
+config = DSNodeConfig(
+    node_id="node3",
+    port=8002,
+    aes_key_file="/path/to/shared.key",
+    bootstrap_nodes=[Endpoint("127.0.0.1", 8000)]
+)
+
+server = DSNodeServer.start(config, update_callback=handle_update)
+```

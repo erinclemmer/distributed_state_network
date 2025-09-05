@@ -13,11 +13,11 @@ KEY_FILE = "network.key"
 if not os.path.exists(KEY_FILE):
     DSNodeServer.generate_key("network.key")
 
-d_cb_test = 0
+cb_test = 0
 
 current_port = 5000
 
-def start_node(node_id: str, bootstrap_port: int = None, disconnect_cb: Optional[Callable] = None):
+def start_node(node_id: str, bootstrap_port: int = None, disconnect_cb: Optional[Callable] = None, update_cb: Optional[Callable] = None):
     global current_port
     args = {
         "node_id": node_id,
@@ -33,7 +33,7 @@ def start_node(node_id: str, bootstrap_port: int = None, disconnect_cb: Optional
     else:
         args["bootstrap_nodes"] = []
 
-    return DSNodeServer.start(DSNodeConfig(**args), disconnect_cb)
+    return DSNodeServer.start(DSNodeConfig(**args), disconnect_cb, update_cb)
 
 class ConnectionsTest(unittest.TestCase):
     def test_one(self):
@@ -75,17 +75,31 @@ class ConnectionsTest(unittest.TestCase):
         self.assertEqual(["node-1", "node-3", "node-4"], sorted(node4.node.peers()))
 
     def test_disconnect_cb(self):
-        global d_cb_test
-        d_cb_test = 0
+        global cb_test
+        cb_test = 0
         def inc():
-            global d_cb_test
-            d_cb_test = 1
+            global cb_test
+            cb_test = 1
         node1 = start_node("node-1", None, inc)
         node2 = start_node("node-2", node1.config.port)
         time.sleep(1)
         node2.stop()
         time.sleep(5)
-        self.assertEqual(d_cb_test, 1)
+        self.assertEqual(cb_test, 1)
+
+    def test_update_cb(self):
+        global cb_test
+        cb_test = 0
+        def inc():
+            global cb_test
+            cb_test = 1
+        node1 = start_node("node-1", None, None, inc)
+        node2 = start_node("node-2", node1.config.port)
+        
+        node2.node.update_data("key", "value")
+        time.sleep(1)
+
+        self.assertEqual(cb_test, 1)
 
 if __name__ == '__main__':
     unittest.main()

@@ -18,10 +18,11 @@ class DSNodeServer(HTTPServer):
 **Parameters:**
 - `config` (`DSNodeConfig`): Node configuration
 - `disconnect_callback` (`Optional[Callable]`): Callback for disconnect events
+- `update_callback` (`Optional[Callable]`): Callback for state update events
 
 ### Static Methods
 
-### `start(config: DSNodeConfig, disconnect_callback: Optional[Callable] = None) -> DSNodeServer`
+### `start(config: DSNodeConfig, disconnect_callback: Optional[Callable] = None, update_callback: Optional[Callable] = None) -> DSNodeServer`
 Creates and starts a new DSNodeServer instance with SSL configuration.
 ```python
 server = DSNodeServer.start(config)
@@ -30,6 +31,7 @@ server = DSNodeServer.start(config)
 **Parameters:**
 - `config` (`DSNodeConfig`): Node configuration
 - `disconnect_callback` (`Optional[Callable]`): Callback for disconnect events
+- `update_callback` (`Optional[Callable]`): Callback for state update events
 
 **Returns:**
 - `DSNodeServer`: Running server instance

@@ -70,11 +70,12 @@ class DSNodeServer(HTTPServer):
     def __init__(
         self, 
         config: DSNodeConfig,
-        disconnect_callback: Optional[Callable] = None
+        disconnect_callback: Optional[Callable] = None,
+        update_callback: Optional[Callable] = None
     ):
         super().__init__(("127.0.0.1", config.port), DSNodeHandler)
         self.config = config
-        self.node = DSNode(config, VERSION, disconnect_callback)
+        self.node = DSNode(config, VERSION, disconnect_callback, update_callback)
         self.node.logger.info(f'Started DSNode on port {config.port}')
 
     def stop(self):
@@ -90,8 +91,8 @@ class DSNodeServer(HTTPServer):
             f.write(key)
 
     @staticmethod 
-    def start(config: DSNodeConfig, disconnect_callback: Optional[Callable] = None) -> 'NodeServer':
-        n = DSNodeServer(config, disconnect_callback)
+    def start(config: DSNodeConfig, disconnect_callback: Optional[Callable] = None, update_callback: Optional[Callable] = None) -> 'NodeServer':
+        n = DSNodeServer(config, disconnect_callback, update_callback)
         ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         public_path = n.node.cert_manager.public_path(n.config.node_id)
         ssl_context.load_cert_chain(
