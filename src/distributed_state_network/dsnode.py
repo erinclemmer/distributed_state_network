@@ -5,7 +5,7 @@ import logging
 import requests
 import threading
 from requests import RequestException
-from typing import Dict, Tuple, List, Optional
+from typing import Dict, Tuple, List, Optional, Callable
 
 from distributed_state_network.objects.endpoint import Endpoint
 from distributed_state_network.objects.hello_packet import HelloPacket
@@ -29,6 +29,7 @@ class DSNode:
             self, 
             config: DSNodeConfig,
             version: str,
+            disconnect_callback: Optional[Callable] = None
         ):
         self.config = config
         self.version = version
@@ -48,6 +49,7 @@ class DSNode:
         }
         
         self.logger = logging.getLogger("DSN: " + config.node_id)
+        self.disconnect_cb = disconnect_callback
         if not os.path.exists(config.aes_key_file):
             raise Exception(f"Could not find aes key file in {config.aes_key_file}")
         threading.Thread(target=self.network_tick).start()
@@ -80,6 +82,8 @@ class DSNode:
             except RequestException:
                 if node_id in self.node_states: # double check if something has changed since the ping request started
                     remove(node_id)
+                    if self.disconnect_cb is not None:
+                        self.disconnect_cb()
 
     def send_request_to_node(self, node_id: str, path: str, payload: bytes, verify) -> Tuple[requests.Response, bytes]:
         con = self.connection_from_node(node_id)

@@ -2,6 +2,7 @@ import os
 import sys
 import time
 import unittest
+from typing import Optional, Callable
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '../src'))
 
@@ -12,9 +13,11 @@ KEY_FILE = "network.key"
 if not os.path.exists(KEY_FILE):
     DSNodeServer.generate_key("network.key")
 
+d_cb_test = 0
+
 current_port = 5000
 
-def start_node(node_id: str, bootstrap_port: int = None):
+def start_node(node_id: str, bootstrap_port: int = None, disconnect_cb: Optional[Callable] = None):
     global current_port
     args = {
         "node_id": node_id,
@@ -30,7 +33,7 @@ def start_node(node_id: str, bootstrap_port: int = None):
     else:
         args["bootstrap_nodes"] = []
 
-    return DSNodeServer.start(DSNodeConfig(**args))
+    return DSNodeServer.start(DSNodeConfig(**args), disconnect_cb)
 
 class ConnectionsTest(unittest.TestCase):
     def test_one(self):
@@ -70,6 +73,19 @@ class ConnectionsTest(unittest.TestCase):
         self.assertEqual(["node-1", "node-3", "node-4"], sorted(node1.node.peers()))
         self.assertEqual(["node-1", "node-3", "node-4"], sorted(node3.node.peers()))
         self.assertEqual(["node-1", "node-3", "node-4"], sorted(node4.node.peers()))
+
+    def test_disconnect_cb(self):
+        global d_cb_test
+        d_cb_test = 0
+        def inc():
+            global d_cb_test
+            d_cb_test = 1
+        node1 = start_node("node-1", None, inc)
+        node2 = start_node("node-2", node1.config.port)
+        time.sleep(1)
+        node2.stop()
+        time.sleep(5)
+        self.assertEqual(d_cb_test, 1)
 
 if __name__ == '__main__':
     unittest.main()

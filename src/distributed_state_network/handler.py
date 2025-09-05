@@ -1,9 +1,7 @@
 import ssl
 import threading
-import json
 import logging
-from typing import Tuple, Callable, Dict
-from threading import Thread
+from typing import Callable, Optional
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 from distributed_state_network.dsnode import DSNode
@@ -11,7 +9,7 @@ from distributed_state_network.objects.config import DSNodeConfig
 from distributed_state_network.util.aes import generate_aes_key
 from distributed_state_network.util import stop_thread
 
-VERSION = "0.0.1"
+VERSION = "0.0.3"
 logging.basicConfig(level=logging.INFO)
 
 def respond_bytes(handler: BaseHTTPRequestHandler, data: bytes):
@@ -71,11 +69,12 @@ def serve(httpd):
 class DSNodeServer(HTTPServer):
     def __init__(
         self, 
-        config: DSNodeConfig
+        config: DSNodeConfig,
+        disconnect_callback: Optional[Callable] = None
     ):
         super().__init__(("127.0.0.1", config.port), DSNodeHandler)
         self.config = config
-        self.node = DSNode(config, VERSION)
+        self.node = DSNode(config, VERSION, disconnect_callback)
         self.node.logger.info(f'Started DSNode on port {config.port}')
 
     def stop(self):
@@ -91,8 +90,8 @@ class DSNodeServer(HTTPServer):
             f.write(key)
 
     @staticmethod 
-    def start(config: DSNodeConfig) -> 'NodeServer':
-        n = DSNodeServer(config)
+    def start(config: DSNodeConfig, disconnect_callback: Optional[Callable] = None) -> 'NodeServer':
+        n = DSNodeServer(config, disconnect_callback)
         ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         public_path = n.node.cert_manager.public_path(n.config.node_id)
         ssl_context.load_cert_chain(
