@@ -37,9 +37,10 @@ class HelloPacket(SignedPacket):
         bts.write_string(self.node_id)
         bts.write_bytes(self.connection.to_bytes())
         bts.write_bytes(self.ecdsa_public_key)
-        bts.write_bytes(self.https_certificate)
         if include_signature:
             bts.write_bytes(self.ecdsa_signature)
+        if self.https_certificate is not None:
+            bts.write_bytes(self.https_certificate)
         
         return bts.get_bytes()
 
@@ -50,10 +51,10 @@ class HelloPacket(SignedPacket):
         node_id = bts.read_string()
         connection = Endpoint.from_bytes(bts.read_bytes())
         ecdsa_public_key = bts.read_bytes()
-        https_certificate = bts.read_bytes()
         ecdsa_signature = bts.read_bytes()
+        https_certificate = bts.read_bytes() or None
 
-        if version == '' or node_id == '' or ecdsa_public_key == b'' or https_certificate == b'':
+        if version == '' or node_id == '' or ecdsa_public_key == b'':
             raise Exception(406) # Not acceptable
 
         return HelloPacket(version, node_id, connection, ecdsa_public_key, ecdsa_signature, https_certificate)

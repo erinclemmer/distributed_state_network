@@ -17,12 +17,14 @@ cb_test = 0
 
 current_port = 5000
 
-def start_node(node_id: str, bootstrap_port: int = None, disconnect_cb: Optional[Callable] = None, update_cb: Optional[Callable] = None):
+def start_node(node_id: str, bootstrap_port: int = None, disconnect_cb: Optional[Callable] = None, update_cb: Optional[Callable] = None, https: bool = False):
     global current_port
     args = {
         "node_id": node_id,
         "port": current_port,
-        "aes_key_file": KEY_FILE
+        "aes_key_file": KEY_FILE,
+        "https": https,
+        "network_ip": "127.0.0.1"
     }
     current_port += 1
     if bootstrap_port is not None:
@@ -43,6 +45,12 @@ class ConnectionsTest(unittest.TestCase):
     def test_two(self):
         node1 = start_node("node-1")
         node2 = start_node("node-2", node1.config.port)
+        self.assertEqual(["node-1", "node-2"], sorted(node1.node.peers()))
+        self.assertEqual(["node-1", "node-2"], sorted(node2.node.peers()))
+
+    def test_https(self):
+        node1 = start_node("node-1", https=True)
+        node2 = start_node("node-2", node1.config.port, https=True)
         self.assertEqual(["node-1", "node-2"], sorted(node1.node.peers()))
         self.assertEqual(["node-1", "node-2"], sorted(node2.node.peers()))
 

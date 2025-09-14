@@ -2,7 +2,7 @@ import hashlib
 
 from ecdsa import SigningKey, VerifyingKey, SECP256k1
 
-def generate_key_pair():
+def generate_key_pair(_):
     private_key = SigningKey.generate(curve=SECP256k1)
     public_key = private_key.get_verifying_key()
     return public_key.to_string(), private_key.to_string()

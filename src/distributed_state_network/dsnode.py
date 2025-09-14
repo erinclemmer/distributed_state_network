@@ -38,7 +38,8 @@ class DSNode:
         self.cert_manager = CertManager(config.node_id)
         self.cred_manager = CredentialManager(config.node_id)
 
-        self.cert_manager.generate_keys()
+        if self.config.https:
+            self.cert_manager.generate_keys(self.config.network_ip)
         self.cred_manager.generate_keys()
         
         self.node_states = {
@@ -94,8 +95,10 @@ class DSNode:
     def send_request(self, con: Endpoint, path: str, payload: bytes, verify, retries: int = 0) -> Tuple[requests.Response, bytes]:
         try:
             # Always send a ping first to throw an error if https validation does not work
-            requests.post(f'https://{con.to_string()}/ping', data=self.encrypt_data(payload), verify=verify, timeout=2)
-            res = requests.post(f'https://{con.to_string()}/{path}', data=self.encrypt_data(payload), verify=verify, timeout=2)
+            protocol = "https" if self.config.https else "http"
+            verify = verify if self.config.https else None
+            requests.post(f'{protocol}://{con.to_string()}/ping', data=self.encrypt_data(payload), verify=verify, timeout=2)
+            res = requests.post(f'{protocol}://{con.to_string()}/{path}', data=self.encrypt_data(payload), verify=verify, timeout=2)
         except Exception as e:
             self.logger.error(e)
             time.sleep(1)
@@ -178,7 +181,8 @@ class DSNode:
             self.logger.error(msg)
             raise Exception(505) # Version not supported
 
-        self.cert_manager.ensure_public(pkt.node_id, pkt.https_certificate)
+        if self.config.https:
+            self.cert_manager.ensure_public(pkt.node_id, pkt.https_certificate)
         self.cred_manager.ensure_public(pkt.node_id, pkt.ecdsa_public_key)
         
         if pkt.node_id not in self.address_book:
@@ -196,7 +200,7 @@ class DSNode:
             self.my_con(), 
             self.cred_manager.my_public(), 
             None,
-            self.cert_manager.my_public()
+            self.cert_manager.my_public() if self.config.https else None
         )
         pkt.sign(self.cred_manager.my_private())
         return pkt

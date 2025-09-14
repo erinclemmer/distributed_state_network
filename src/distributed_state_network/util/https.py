@@ -9,7 +9,7 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives.serialization import Encoding, PrivateFormat, NoEncryption
 
-def generate_cert():
+def generate_cert(network_ip: str):
     # Generate private key
     private_key = rsa.generate_private_key(
         public_exponent=65537,
@@ -19,11 +19,8 @@ def generate_cert():
 
     # Generate a self-signed certificate
     subject = issuer = x509.Name([
-        x509.NameAttribute(NameOID.COUNTRY_NAME, "US"),
-        x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, "California"),
-        x509.NameAttribute(NameOID.LOCALITY_NAME, "San Francisco"),
-        x509.NameAttribute(NameOID.ORGANIZATION_NAME, "My Organization"),
-        x509.NameAttribute(NameOID.COMMON_NAME, "localhost"),
+        x509.NameAttribute(NameOID.ORGANIZATION_NAME, "DSN"),
+        x509.NameAttribute(NameOID.COMMON_NAME, "DSN"),
     ])
 
     certificate = (
@@ -36,8 +33,8 @@ def generate_cert():
         .not_valid_after(datetime.utcnow() + timedelta(days=365))
         .add_extension(
             x509.SubjectAlternativeName([
-                x509.DNSName("localhost"),
-                IPAddress(ipaddress.IPv4Address("127.0.0.1"))
+                x509.DNSName(network_ip),
+                IPAddress(ipaddress.IPv4Address(network_ip))
             ]),
             critical=False
         )

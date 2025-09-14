@@ -93,13 +93,14 @@ class DSNodeServer(HTTPServer):
     @staticmethod 
     def start(config: DSNodeConfig, disconnect_callback: Optional[Callable] = None, update_callback: Optional[Callable] = None) -> 'NodeServer':
         n = DSNodeServer(config, disconnect_callback, update_callback)
-        ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-        public_path = n.node.cert_manager.public_path(n.config.node_id)
-        ssl_context.load_cert_chain(
-            certfile=public_path,
-            keyfile=public_path.replace(".crt", ".key")
-        )
-        n.socket = ssl_context.wrap_socket(n.socket, server_side=True)
+        if config.https:
+            ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            public_path = n.node.cert_manager.public_path(n.config.node_id)
+            ssl_context.load_cert_chain(
+                certfile=public_path,
+                keyfile=public_path.replace(".crt", ".key")
+            )
+            n.socket = ssl_context.wrap_socket(n.socket, server_side=True)
         n.thread = threading.Thread(target=serve, args=(n, ))
         n.thread.start()
 
