@@ -73,7 +73,7 @@ class DSNodeServer(HTTPServer):
         disconnect_callback: Optional[Callable] = None,
         update_callback: Optional[Callable] = None
     ):
-        super().__init__(("127.0.0.1", config.port), DSNodeHandler)
+        super().__init__(("0.0.0.0", config.port), DSNodeHandler)
         self.config = config
         self.node = DSNode(config, VERSION, disconnect_callback, update_callback)
         self.node.logger.info(f'Started DSNode on port {config.port}')
