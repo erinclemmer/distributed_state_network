@@ -47,7 +47,7 @@ class DSNode:
         }
 
         self.address_book = {
-            self.config.node_id: Endpoint("127.0.0.1", config.port)
+            self.config.node_id: Endpoint(config.network_ip, config.port)
         }
         
         self.logger = logging.getLogger("DSN: " + config.node_id)
