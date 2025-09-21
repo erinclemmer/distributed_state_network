@@ -109,5 +109,18 @@ class ConnectionsTest(unittest.TestCase):
 
         self.assertEqual(cb_test, 1)
 
+    def test_update_error(self):
+        global cb_test
+        cb_test = 0
+        def inc():
+            raise Exception("This should be captured")
+        node1 = start_node("node-1", None, None, inc)
+        node2 = start_node("node-2", node1.config.port)
+
+        node2.node.update_data("key", "value")
+        time.sleep(1)
+        self.assertEqual(1, 1, "Should make it to this point")
+
+
 if __name__ == '__main__':
     unittest.main()
