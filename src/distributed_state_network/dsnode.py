@@ -234,7 +234,11 @@ class DSNode:
             self.node_states[pkt.node_id] = pkt
 
         if self.update_cb is not None:
-            self.update_cb()
+            try:
+                self.update_cb()
+            except Exception as e:
+                self.logger.error("Update Error Captured:")
+                self.logger.error(str(e))
 
         return self.my_state().to_bytes()
 
