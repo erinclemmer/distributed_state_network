@@ -266,7 +266,10 @@ class DSNode:
         for key in list(self.node_states.keys())[:]:
             if key == self.config.node_id:
                 continue
-            self.send_update(key)
+            try:
+                self.send_update(key)
+            except Exception as e:
+                print(e)
 
     def my_con(self) -> Endpoint:
         return self.connection_from_node(self.config.node_id)
