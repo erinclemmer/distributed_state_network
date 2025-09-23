@@ -55,7 +55,7 @@ class StatePacket(SignedPacket):
         node_id = bts.read_string()
         
         if node_id == '':
-            raise Exception(406) # Not acceptable
+            raise Exception(406, "Malformed packet") # Not acceptable
         
         last_update = bts.read_float()
         ecdsa_signature = bts.read_bytes()

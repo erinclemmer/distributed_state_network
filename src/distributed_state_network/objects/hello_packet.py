@@ -55,6 +55,6 @@ class HelloPacket(SignedPacket):
         https_certificate = bts.read_bytes() or None
 
         if version == '' or node_id == '' or ecdsa_public_key == b'':
-            raise Exception(406) # Not acceptable
+            raise Exception(406, "Malformed packet") # Not acceptable
 
         return HelloPacket(version, node_id, connection, ecdsa_public_key, ecdsa_signature, https_certificate)

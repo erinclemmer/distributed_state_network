@@ -322,6 +322,7 @@ class TestNode(unittest.TestCase):
             cm.read_public('test')
         except Exception as e:
             self.assertEqual(e.args[0], 401)
+            self.assertEqual(e.args[1], "Cannot find public ECDSA key for test")
 
     def test_ensure_cert(self):
         if os.path.exists('certs'):

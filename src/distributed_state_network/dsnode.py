@@ -150,10 +150,10 @@ class DSNode:
     def handle_peers(self, data: bytes):
         pkt = PeersPacket.from_bytes(data)
         if pkt.node_id not in self.address_book:
-            raise Exception(401) # Not Authorized
+            raise Exception(401, f"Could not find {pkt.node_id} in address book") # Not Authorized
         
         if not pkt.verify_signature(self.cred_manager.read_public(pkt.node_id)):
-            raise Exception(406) # Not Acceptable
+            raise Exception(406, "Could not verify ECDSA signature of packet") # Not Acceptable
 
         peers = { }
         for key in self.address_book.keys():
@@ -221,14 +221,14 @@ class DSNode:
         
         # ignore if we accidentally sent an update to ourselves
         if pkt.node_id == self.config.node_id:
-            raise Exception(406) # Not acceptable
+            raise Exception(406, "Origin and destination are the same") # Not acceptable
         
         # don't use packets older than last update
         if pkt.node_id in self.node_states and self.node_states[pkt.node_id].last_update > pkt.last_update:
-            raise Exception(406) # Not acceptable
+            raise Exception(406, "Update is stale") # Not acceptable
         
         if not pkt.verify_signature(self.cred_manager.read_public(pkt.node_id)):
-            raise Exception(401) # Not authorized
+            raise Exception(401, "Could not verify ECDSA signature") # Not authorized
         
         if pkt.node_id not in self.node_states:
             self.node_states[pkt.node_id] = pkt

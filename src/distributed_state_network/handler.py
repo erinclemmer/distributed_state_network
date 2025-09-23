@@ -27,9 +27,11 @@ def graceful_fail(httpd: BaseHTTPRequestHandler, body: bytes, fn: Callable):
         else:
             respond_bytes(httpd, b'')
     except Exception as e:
-        httpd.server.node.logger.error(f"Sending Error: {e.args[0]}")
+        httpd.server.node.logger.error(f"Sending Error: {e.args[0]} {e.args[1]}")
         httpd.send_response(e.args[0])
         httpd.end_headers()
+        httpd.wfile.write(e.args[1].encode('utf-8'))
+        httpd.wfile.flush()
 
 class DSNodeHandler(BaseHTTPRequestHandler):
     server: "NodeServer"

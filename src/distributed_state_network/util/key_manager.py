@@ -32,7 +32,7 @@ class KeyManager:
 
     def read_public(self, node_id: str) -> bytes:
         if not os.path.exists(f'{self.folder}/{self.node_id}/{node_id}.{self.public_extension}'):
-            raise Exception(401)
+            raise Exception(401, f"Cannot find public ECDSA key for {node_id}")
         with open(f'{self.folder}/{self.node_id}/{node_id}.{self.public_extension}', 'rb') as f:
             return f.read()
 
@@ -42,7 +42,7 @@ class KeyManager:
     def ensure_public(self, node_id: str, public_key: bytes):
         if self.has_public(node_id):
             if not self.verify_public(node_id, public_key):
-                raise Exception(401)
+                raise Exception(401, f"Cannot verify ECDSA key for {node_id}")
         else:
             self.write_public(node_id, public_key)
 
