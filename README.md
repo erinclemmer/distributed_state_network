@@ -52,7 +52,7 @@ DSN creates a peer-to-peer network where each node maintains its own state datab
 - Each node owns its state and is the only one who can modify it
 - State changes are automatically broadcast to all connected nodes
 - Any node can read any other node's state instantly
-- All communication is encrypted with AES + ECDSA + HTTPS
+- All communication is encrypted with AES
 
 ## Example: Distributed Temperature Monitoring
 
@@ -85,6 +85,9 @@ for node_id in monitor.node.peers():
   
 ### Documentation
 * [Usage Examples](./documentation/usage.md)  
+* [Configuration Class] (./documentation/ds-node-config.md)
+* [Server Class] (./documentation/ds-node-server.md)
+* [Protocol Class] (./documentation/ds-node.md)
 * [Protocol](./documentation/protocol.md)
 
 #### API Reference
