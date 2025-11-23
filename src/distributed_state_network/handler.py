@@ -73,7 +73,8 @@ class DSNodeServer:
                 response = None
                 
                 if msg_type == MSG_HELLO:
-                    response = self.node.handle_hello(body)
+                    # Pass the detected IP address to handle_hello
+                    response = self.node.handle_hello(body, addr[0])
                     
                 elif msg_type == MSG_PEERS:
                     response = self.node.handle_peers(body)

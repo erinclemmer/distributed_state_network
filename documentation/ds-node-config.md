@@ -14,7 +14,6 @@ class DSNodeConfig:
     port: int
     aes_key_file: str
     bootstrap_nodes: List[Endpoint]
-    network_ip: str = "127.0.0.1"
 ```
 
 ### Attributes
@@ -22,7 +21,8 @@ class DSNodeConfig:
 - **port** (`int`): Port number for the node to listen on (UDP)
 - **aes_key_file** (`str`): Path to the AES key file for encryption/decryption
 - **bootstrap_nodes** (`List[Endpoint]`): List of initial nodes to connect to when joining the network
-- **network_ip** (`str`, optional): Network address of the current computer (defaults to "127.0.0.1")
+
+**Note:** The node's public IP address is automatically detected by the bootstrap server during the initial handshake.
 
 ### Methods
 
@@ -48,14 +48,12 @@ config_dict = {
 config = DSNodeConfig.from_dict(config_dict)
 ```
 
-**Example with custom network_ip:**
+**Example for bootstrap node (first node in network):**
 ```python
 config_dict = {
-    "node_id": "node1",
+    "node_id": "bootstrap",
     "port": 8000,
     "aes_key_file": "/path/to/key.aes",
-    "network_ip": "192.168.0.1",
-    "bootstrap_nodes": [
-        {"address": "192.168.0.2", "port": 8001}
-    ]
+    "bootstrap_nodes": []  # Empty for first node
 }
+config = DSNodeConfig.from_dict(config_dict)

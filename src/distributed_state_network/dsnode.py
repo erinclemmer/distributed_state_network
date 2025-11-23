@@ -49,8 +49,10 @@ class DSNode:
             self.config.node_id: StatePacket.create(self.config.node_id, time.time(), self.cred_manager.my_private(), { })
         }
 
+        # Determine initial IP - use 127.0.0.1 for localhost, will be updated when connecting to remote nodes
+        initial_ip = "127.0.0.1"
         self.address_book = {
-            self.config.node_id: Endpoint(config.network_ip, config.port)
+            self.config.node_id: Endpoint(initial_ip, config.port)
         }
         
         self.logger = logging.getLogger("DSN: " + config.node_id)
@@ -225,12 +227,36 @@ class DSNode:
 
         payload = self.my_hello_packet().to_bytes()
         content = self.send_udp_request(con, MSG_HELLO, payload)
-        self.handle_hello(content)
-
+        
+        # Get the response packet
         pkt = HelloPacket.from_bytes(content)
+        self.logger.info(f"Received HELLO from {pkt.node_id}")
+        
+        # Verify version compatibility
+        if pkt.version != self.version:
+            msg = f"HELLO => {pkt.node_id} (Version mismatch \"{pkt.version}\" != \"{self.version}\")"
+            self.logger.error(msg)
+            raise Exception(505)  # Version not supported
+
+        # Store the peer's public key
+        self.cred_manager.ensure_public(pkt.node_id, pkt.ecdsa_public_key)
+        
+        # If the server sent us our detected IP, update our address book
+        if pkt.detected_address:
+            self.logger.info(f"Server detected our IP as: {pkt.detected_address}")
+            # Update our own connection in the address book with the detected IP
+            self.address_book[self.config.node_id] = Endpoint(pkt.detected_address, self.config.port)
+        
+        # Store the peer's connection info
+        if pkt.node_id not in self.address_book:
+            self.address_book[pkt.node_id] = pkt.connection
+
+        if pkt.node_id not in self.node_states:
+            self.node_states[pkt.node_id] = StatePacket(pkt.node_id, 0, b'', { })
+
         return pkt.node_id
 
-    def handle_hello(self, data: bytes) -> bytes:
+    def handle_hello(self, data: bytes, detected_address: str = None) -> bytes:
         pkt = HelloPacket.from_bytes(data)
         self.logger.info(f"Received HELLO from {pkt.node_id}")
         if pkt.version != self.version:
@@ -246,7 +272,10 @@ class DSNode:
         if pkt.node_id not in self.node_states:
             self.node_states[pkt.node_id] = StatePacket(pkt.node_id, 0, b'', { })
 
-        return self.my_hello_packet().to_bytes()
+        # Create response with detected address
+        response_pkt = self.my_hello_packet()
+        response_pkt.detected_address = detected_address
+        return response_pkt.to_bytes()
 
     def my_hello_packet(self) -> HelloPacket:
         pkt = HelloPacket(

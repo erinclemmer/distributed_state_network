@@ -1,12 +1,9 @@
-import json
-from io import BytesIO
-from typing import Dict
+from typing import Optional
 
 from distributed_state_network.objects.endpoint import Endpoint
 
 from distributed_state_network.objects.signed_packet import SignedPacket
 from distributed_state_network.util.byte_helper import ByteHelper
-from distributed_state_network.util import bytes_to_int, int_to_bytes
 
 class HelloPacket(SignedPacket):
     version: str
@@ -14,6 +11,7 @@ class HelloPacket(SignedPacket):
     connection: Endpoint
     ecdsa_public_key: bytes
     https_certificate: bytes
+    detected_address: Optional[str]  # IP address detected by the server
 
     def __init__(
         self, 
@@ -22,7 +20,8 @@ class HelloPacket(SignedPacket):
         connection: Endpoint,
         ecdsa_public_key: bytes,
         ecdsa_signature: bytes,
-        https_certificate: bytes
+        https_certificate: bytes,
+        detected_address: Optional[str] = None
     ):
         super().__init__(ecdsa_signature)
         self.version = version
@@ -30,6 +29,7 @@ class HelloPacket(SignedPacket):
         self.connection = connection
         self.ecdsa_public_key = ecdsa_public_key
         self.https_certificate = https_certificate
+        self.detected_address = detected_address
 
     def to_bytes(self, include_signature: bool = True):
         bts = ByteHelper()
@@ -41,6 +41,8 @@ class HelloPacket(SignedPacket):
             bts.write_bytes(self.ecdsa_signature)
         if self.https_certificate is not None:
             bts.write_bytes(self.https_certificate)
+        # Add detected address (empty string if None)
+        bts.write_string(self.detected_address or "")
         
         return bts.get_bytes()
 
@@ -53,8 +55,10 @@ class HelloPacket(SignedPacket):
         ecdsa_public_key = bts.read_bytes()
         ecdsa_signature = bts.read_bytes()
         https_certificate = bts.read_bytes() or None
+        # Read detected address (may be empty string for older packets)
+        detected_address = bts.read_string() or None
 
         if version == '' or node_id == '' or ecdsa_public_key == b'':
             raise Exception(406, "Malformed packet") # Not acceptable
 
-        return HelloPacket(version, node_id, connection, ecdsa_public_key, ecdsa_signature, https_certificate)
+        return HelloPacket(version, node_id, connection, ecdsa_public_key, ecdsa_signature, https_certificate, detected_address)

@@ -9,7 +9,6 @@ class DSNodeConfig:
     port: int
     aes_key_file: str
     bootstrap_nodes: List[Endpoint]
-    network_ip: str = "127.0.0.1"
 
     @staticmethod
     def from_dict(data: Dict) -> 'DSNodeConfig':
@@ -17,6 +16,5 @@ class DSNodeConfig:
             data["node_id"], 
             data["port"], 
             data["aes_key_file"], 
-            [Endpoint.from_json(e) for e in data["bootstrap_nodes"]],
-            data.get("network_ip", "127.0.0.1")
+            [Endpoint.from_json(e) for e in data["bootstrap_nodes"]]
         )
