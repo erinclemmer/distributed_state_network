@@ -7,18 +7,16 @@ from distributed_state_network.objects.endpoint import Endpoint
 class DSNodeConfig:
     node_id: str
     port: int
-    https: bool
-    network_ip: str
     aes_key_file: str
     bootstrap_nodes: List[Endpoint]
+    network_ip: str = "127.0.0.1"
 
     @staticmethod
     def from_dict(data: Dict) -> 'DSNodeConfig':
         return DSNodeConfig(
             data["node_id"], 
             data["port"], 
-            data["https"],
-            data["network_ip"],
             data["aes_key_file"], 
-            [Endpoint.from_json(e) for e in data["bootstrap_nodes"]]
+            [Endpoint.from_json(e) for e in data["bootstrap_nodes"]],
+            data.get("network_ip", "127.0.0.1")
         )

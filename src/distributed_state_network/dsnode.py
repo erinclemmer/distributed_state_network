@@ -1,11 +1,9 @@
 import os
 import time
+import socket
 import logging
-
-import requests
 import threading
-from requests import RequestException
-from typing import Dict, Tuple, List, Optional, Callable
+from typing import Dict, List, Optional, Callable
 
 from distributed_state_network.objects.endpoint import Endpoint
 from distributed_state_network.objects.hello_packet import HelloPacket
@@ -14,10 +12,12 @@ from distributed_state_network.objects.state_packet import StatePacket
 from distributed_state_network.objects.config import DSNodeConfig
 
 from distributed_state_network.util import get_dict_hash
-from distributed_state_network.util.key_manager import CertManager, CredentialManager
+from distributed_state_network.util.key_manager import CredentialManager
 from distributed_state_network.util.aes import aes_encrypt, aes_decrypt
+from distributed_state_network.objects.msg_types import MSG_HELLO, MSG_PEERS, MSG_PING, MSG_UPDATE
 
 TICK_INTERVAL = 3
+UDP_TIMEOUT = 2  # seconds
 
 class DSNode:
     config: DSNodeConfig
@@ -35,11 +35,7 @@ class DSNode:
         self.config = config
         self.version = version
         
-        self.cert_manager = CertManager(config.node_id)
         self.cred_manager = CredentialManager(config.node_id)
-
-        if self.config.https:
-            self.cert_manager.generate_keys(self.config.network_ip)
         self.cred_manager.generate_keys()
         
         self.node_states = {
@@ -55,7 +51,7 @@ class DSNode:
         self.update_cb = update_callback
         if not os.path.exists(config.aes_key_file):
             raise Exception(f"Could not find aes key file in {config.aes_key_file}")
-        threading.Thread(target=self.network_tick).start()
+        threading.Thread(target=self.network_tick, daemon=True).start()
 
     def get_aes_key(self):
         with open(self.config.aes_key_file, 'rb') as f:
@@ -67,7 +63,7 @@ class DSNode:
             self.logger.info("Shutting down node")
             return
         self.test_connections()
-        threading.Thread(target=self.network_tick).start()
+        threading.Thread(target=self.network_tick, daemon=True).start()
 
     def test_connections(self):
         def remove(node_id: str):
@@ -82,44 +78,59 @@ class DSNode:
                 if self.shutting_down:
                     return
                 self.send_ping(node_id)
-            except RequestException:
-                if node_id in self.node_states: # double check if something has changed since the ping request started
+            except Exception:
+                if node_id in self.node_states:  # double check if something has changed since the ping request started
                     remove(node_id)
                     if self.disconnect_cb is not None:
                         self.disconnect_cb()
 
-    def send_request_to_node(self, node_id: str, path: str, payload: bytes, verify) -> Tuple[requests.Response, bytes]:
-        con = self.connection_from_node(node_id)
-        return self.send_request(con, path, payload, verify)
-
-    def send_request(self, con: Endpoint, path: str, payload: bytes, verify, retries: int = 0) -> Tuple[requests.Response, bytes]:
+    def send_udp_request(self, endpoint: Endpoint, msg_type: int, payload: bytes, retries: int = 0) -> bytes:
+        """Send UDP request and wait for response"""
         try:
-            # Always send a ping first to throw an error if https validation does not work
-            protocol = "https" if self.config.https else "http"
-            verify = verify if self.config.https else None
-            requests.post(f'{protocol}://{con.to_string()}/ping', data=self.encrypt_data(payload), verify=verify, timeout=2)
-            res = requests.post(f'{protocol}://{con.to_string()}/{path}', data=self.encrypt_data(payload), verify=verify, timeout=2)
-        except Exception as e:
-            self.logger.error(e)
-            time.sleep(1)
+            # Create a new socket for this request
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.settimeout(UDP_TIMEOUT)
+            
+            # Prepend message type to payload
+            data_with_type = bytes([msg_type]) + payload
+            encrypted_data = self.encrypt_data(data_with_type)
+            
+            # Send the packet
+            sock.sendto(encrypted_data, (endpoint.address, endpoint.port))
+            
+            # Wait for response
+            response_data, _ = sock.recvfrom(65507)
+            sock.close()
+            
+            # Decrypt and validate response
+            decrypted = self.decrypt_data(response_data)
+            
+            if len(decrypted) == 0:
+                return b''
+            
+            # First byte should be the message type
+            response_type = decrypted[0]
+            if response_type != msg_type:
+                raise Exception(f"Response type mismatch: expected {msg_type}, got {response_type}")
+            
+            return decrypted[1:]
+            
+        except socket.timeout:
             if retries < 2:
-                return self.send_request(con, path, payload, verify, retries + 1)
+                time.sleep(0.5)
+                return self.send_udp_request(endpoint, msg_type, payload, retries + 1)
             else:
-                raise RequestException(f'{path.upper()} => {con.to_string()} (no response)')
-        return self.parse_response(con, path, res)
+                raise Exception(f"UDP request to {endpoint.to_string()} timed out")
+        except Exception as e:
+            if retries < 2:
+                time.sleep(0.5)
+                return self.send_udp_request(endpoint, msg_type, payload, retries + 1)
+            else:
+                raise Exception(f"UDP request to {endpoint.to_string()} failed: {e}")
 
-    def parse_response(self, con: Endpoint, path: str, res: requests.Response) -> Tuple[requests.Response, bytes]:
-        if res.status_code != 200:
-            raise RequestException(f'{path.upper()} => {con.to_string()} (status code {res.status_code})')
-        
-        decrypted_data = b''
-        if len(res.content) > 0:
-            try:
-                decrypted_data = self.decrypt_data(res.content)
-            except Exception as e:
-                raise RequestException(f'{path.upper()} => {con.to_string()} (cannot decrypt response)')
-
-        return res, decrypted_data
+    def send_request_to_node(self, node_id: str, msg_type: int, payload: bytes) -> bytes:
+        con = self.connection_from_node(node_id)
+        return self.send_udp_request(con, msg_type, payload)
 
     def encrypt_data(self, data: bytes) -> bytes:
         return aes_encrypt(self.get_aes_key(), data)
@@ -130,7 +141,7 @@ class DSNode:
     def request_peers(self, node_id: str):
         pkt = PeersPacket(self.config.node_id, None, { })
         pkt.sign(self.cred_manager.my_private())
-        res, content = self.send_request_to_node(node_id, 'peers', pkt.to_bytes(), self.cert_manager.public_path(node_id))
+        content = self.send_request_to_node(node_id, MSG_PEERS, pkt.to_bytes())
         pkt = PeersPacket.from_bytes(content)
         if not pkt.verify_signature(self.cred_manager.read_public(node_id)):
             raise Exception("Could not verify peers packet")
@@ -144,16 +155,16 @@ class DSNode:
             if key not in self.node_states:
                 self.send_hello(self.address_book[key])
             
-            _, node_state = self.send_update(key)
+            node_state = self.send_update(key)
             self.handle_update(node_state)
 
     def handle_peers(self, data: bytes):
         pkt = PeersPacket.from_bytes(data)
         if pkt.node_id not in self.address_book:
-            raise Exception(401, f"Could not find {pkt.node_id} in address book") # Not Authorized
+            raise Exception(401, f"Could not find {pkt.node_id} in address book")  # Not Authorized
         
         if not pkt.verify_signature(self.cred_manager.read_public(pkt.node_id)):
-            raise Exception(406, "Could not verify ECDSA signature of packet") # Not Acceptable
+            raise Exception(406, "Could not verify ECDSA signature of packet")  # Not Acceptable
 
         peers = { }
         for key in self.address_book.keys():
@@ -167,7 +178,7 @@ class DSNode:
         self.logger.info(f"HELLO => {con.to_string()}")
 
         payload = self.my_hello_packet().to_bytes()
-        _, content = self.send_request(con, 'hello', payload, False)
+        content = self.send_udp_request(con, MSG_HELLO, payload)
         self.handle_hello(content)
 
         pkt = HelloPacket.from_bytes(content)
@@ -179,10 +190,8 @@ class DSNode:
         if pkt.version != self.version:
             msg = f"HELLO => {pkt.node_id} (Version mismatch \"{pkt.version}\" != \"{self.version}\")"
             self.logger.error(msg)
-            raise Exception(505) # Version not supported
+            raise Exception(505)  # Version not supported
 
-        if self.config.https:
-            self.cert_manager.ensure_public(pkt.node_id, pkt.https_certificate)
         self.cred_manager.ensure_public(pkt.node_id, pkt.ecdsa_public_key)
         
         if pkt.node_id not in self.address_book:
@@ -200,20 +209,21 @@ class DSNode:
             self.my_con(), 
             self.cred_manager.my_public(), 
             None,
-            self.cert_manager.my_public() if self.config.https else None
+            None  # No HTTPS certificate for UDP
         )
         pkt.sign(self.cred_manager.my_private())
         return pkt
 
     def send_ping(self, node_id: str):     
         try:
-            self.send_request_to_node(node_id, 'ping', b' ', verify=self.cert_manager.public_path(node_id))
+            self.send_request_to_node(node_id, MSG_PING, b' ')
         except Exception as e:
-            raise RequestException(f'PING => {node_id}: {e}')
+            raise Exception(f'PING => {node_id}: {e}')
 
     def send_update(self, node_id: str):
         self.logger.info(f"UPDATE => {node_id}")
-        return self.send_request_to_node(node_id, 'update', self.my_state().to_bytes(), self.cert_manager.public_path(node_id))
+        content = self.send_request_to_node(node_id, MSG_UPDATE, self.my_state().to_bytes())
+        return content
 
     def handle_update(self, data: bytes):
         pkt = StatePacket.from_bytes(data)
@@ -221,14 +231,14 @@ class DSNode:
         
         # ignore if we accidentally sent an update to ourselves
         if pkt.node_id == self.config.node_id:
-            raise Exception(406, "Origin and destination are the same") # Not acceptable
+            raise Exception(406, "Origin and destination are the same")  # Not acceptable
         
         # don't use packets older than last update
         if pkt.node_id in self.node_states and self.node_states[pkt.node_id].last_update > pkt.last_update:
-            raise Exception(406, "Update is stale") # Not acceptable
+            raise Exception(406, "Update is stale")  # Not acceptable
         
         if not pkt.verify_signature(self.cred_manager.read_public(pkt.node_id)):
-            raise Exception(401, "Could not verify ECDSA signature") # Not authorized
+            raise Exception(401, "Could not verify ECDSA signature")  # Not authorized
         
         if pkt.node_id not in self.node_states:
             self.node_states[pkt.node_id] = pkt
@@ -252,7 +262,7 @@ class DSNode:
     def bootstrap(self, con: Endpoint):
         bootstrap_id = self.send_hello(con)
         self.address_book[bootstrap_id] = con
-        _, content = self.send_update(bootstrap_id)
+        content = self.send_update(bootstrap_id)
         self.handle_update(content)
         self.request_peers(bootstrap_id)
 

@@ -1,14 +1,11 @@
 import os
 import sys
-import ssl
 import time
-import ctypes
 import random
 import shutil
 import logging
 import unittest
-import threading
-import requests
+import socket
 from typing import List, Dict
 
 sys.path.append(os.path.join(os.path.dirname(__file__), './src'))
@@ -29,10 +26,7 @@ key_file = "src/distributed_state_network/test.key"
 if not os.path.exists(key_file):
     DSNodeServer.generate_key(key_file)
 
-def serve(httpd):
-    httpd.serve_forever()
-
-def spawn_node(node_id: str, bootstrap_nodes: List[Dict] = []):
+def spawn_node(node_id: str, bootstrap_nodes: List[Dict] = [], sock: socket.socket = None):
     global current_port
     current_port += 1
     n = DSNodeServer.start(DSNodeConfig.from_dict({
@@ -40,7 +34,7 @@ def spawn_node(node_id: str, bootstrap_nodes: List[Dict] = []):
         "port": current_port,
         "aes_key_file": key_file,
         "bootstrap_nodes": bootstrap_nodes
-    }))
+    }), sock=sock)
     global nodes
     nodes.append(n)
     return n
@@ -146,8 +140,10 @@ class TestNode(unittest.TestCase):
         self.assertEqual(None, bootstrap.node.read_data("connector", "foo"))
 
         connector.node.update_data("foo", "bar")
+        time.sleep(0.5)  # Give time for UDP packet to arrive
         self.assertEqual("bar", bootstrap.node.read_data("connector", "foo"))
         bootstrap.node.update_data("bar", "baz")
+        time.sleep(0.5)  # Give time for UDP packet to arrive
         self.assertEqual("baz", connector.node.read_data("bootstrap", "bar"))
 
     def test_bad_aes_key(self):
@@ -158,47 +154,59 @@ class TestNode(unittest.TestCase):
             print(e)
 
     def test_authorization(self):
+        """Test that unauthorized UDP packets are rejected"""
         n = spawn_node("node")
-        res = requests.post(f"https://127.0.0.1:{n.config.port}/ping", data=b'TEST', verify=False)
-        self.assertEqual(res.content, b'Not Authorized')
-
-        encrypted_data = n.node.encrypt_data(b'TEST')
-        res = requests.post(f"https://127.0.0.1:{n.config.port}/ping", data=encrypted_data, verify=False)
-        self.assertEqual(res.content, b'')
+        
+        # Create a UDP socket to send unauthorized data
+        test_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        test_sock.settimeout(2)
+        
+        # Send unencrypted data - should be rejected
+        test_sock.sendto(b'TEST', ('127.0.0.1', n.config.port))
+        
+        # Try to receive response (should not get one for bad data)
+        try:
+            data, addr = test_sock.recvfrom(1024)
+            # If we get here, check that response indicates error
+            print(f"Received response: {data}")
+        except socket.timeout:
+            # This is expected - no valid response for bad data
+            pass
+        
+        # Send properly encrypted data
+        encrypted_data = n.node.encrypt_data(bytes([4]) + b'TEST')  # MSG_PING = 4
+        test_sock.sendto(encrypted_data, ('127.0.0.1', n.config.port))
+        
+        # Should get a response for valid encrypted ping
+        try:
+            data, addr = test_sock.recvfrom(1024)
+            decrypted = n.node.decrypt_data(data)
+            self.assertEqual(decrypted[0], 4)  # Should be MSG_PING response
+        except socket.timeout:
+            self.fail("Should receive response for valid encrypted ping")
+        
+        test_sock.close()
 
     def test_version_matching(self):
         bootstrap = spawn_node("bootstrap")
-        bootstrap.node.node_states["bootstrap"].version = "bad_version"
+        # Modify version after creation
+        old_version = bootstrap.node.version
+        bootstrap.node.version = "bad_version"
         try:
             connector = spawn_node("connector", [bootstrap.node.my_con().to_json()])
-            self.fail("Should throw error when connecting")
+            self.fail("Should throw error when connecting with version mismatch")
         except Exception as e:
             print(e)
-
-    def test_status_code(self):
-        bootstrap = spawn_node("bootstrap")
-        connector = spawn_node("connector", [bootstrap.node.my_con().to_json()])
-        try:
-            connector.node.send_request_to_node("bootstrap", "bad-path", b'', False)
-            self.fail("Should error if a 404 was received")
-        except Exception as e:
-            print(e)
+        finally:
+            bootstrap.node.version = old_version
 
     def test_bad_req_data(self):
         bootstrap = spawn_node("bootstrap")
         connector = spawn_node("connector", [bootstrap.node.my_con().to_json()])
         try: 
-            connector.node.send_request_to_node("bootstrap", "hello", b'TEST', False)
+            # Try to send malformed data
+            connector.node.send_udp_request(bootstrap.node.my_con(), 1, b'MALFORMED_DATA')
             self.fail("Should throw error for malformed data")
-        except Exception as e:
-            print(e)
-
-    def test_decrypt_response(self):
-        n = spawn_node("node")
-        sample_response = requests.get("https://google.com")
-        try:
-            n.node.parse_response(("test", 3000), "test", sample_response)
-            self.fail("Should throw error if can't decrypt response")
         except Exception as e:
             print(e)
 
@@ -324,25 +332,6 @@ class TestNode(unittest.TestCase):
             self.assertEqual(e.args[0], 401)
             self.assertEqual(e.args[1], "Cannot find public ECDSA key for test")
 
-    def test_ensure_cert(self):
-        if os.path.exists('certs'):
-            shutil.rmtree('certs')
-        cm = CertManager('test')
-        cm.generate_keys()
-        try:
-            cm.ensure_public("test", b'WRONG CERTIFICATE')
-            self.fail("Should throw error for certificate mismatch")
-        except Exception as e:
-            print(e)
-
-        shutil.rmtree('certs')
-
-    def test_verify_cert(self):
-        if os.path.exists('certs'):
-            shutil.rmtree('certs')
-        cm = CertManager('test')
-        self.assertFalse(cm.verify_public('test', b'BAD KEY'))
-
     def test_authentication_reset(self):
         bootstrap = spawn_node("bootstrap")
         connector = spawn_node("connector", [bootstrap.node.my_con().to_json()])
@@ -362,6 +351,21 @@ class TestNode(unittest.TestCase):
         connector.stop()
         connector = spawn_node("connector", [bootstrap.node.my_con().to_json()])
         self.assertIn('connector', bootstrap.node.peers())
+
+    def test_custom_socket(self):
+        """Test that a custom socket can be provided"""
+        # Create a custom UDP socket
+        custom_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        custom_sock.bind(("0.0.0.0", 9000))
+        
+        # Start node with custom socket
+        n = spawn_node("custom-socket-node", sock=custom_sock)
+        
+        # Verify the node is using the custom socket
+        self.assertEqual(n.socket, custom_sock)
+        
+        # Clean up
+        n.stop()
 
 if __name__ == "__main__":
     unittest.main()

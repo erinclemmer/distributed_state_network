@@ -30,8 +30,8 @@ server = DSNodeServer.start(config)
 
 **Parameters:**
 - `config` (`DSNodeConfig`): Node configuration
-- `disconnect_callback` (`Optional[Callable]`): Callback for disconnect events
-- `update_callback` (`Optional[Callable]`): Callback for state update events
+- `disconnect_callback` (`Optional[Callable]`): Callback for disconnect events (no parameters)
+- `update_callback` (`Optional[Callable]`): Callback for state update events (no parameters)
 
 **Returns:**
 - `DSNodeServer`: Running server instance

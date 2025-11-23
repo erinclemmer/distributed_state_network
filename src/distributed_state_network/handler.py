@@ -1,90 +1,102 @@
-import ssl
+import socket
 import threading
 import logging
 from typing import Callable, Optional
-from http.server import HTTPServer, BaseHTTPRequestHandler
-
 from distributed_state_network.dsnode import DSNode
 from distributed_state_network.objects.config import DSNodeConfig
 from distributed_state_network.util.aes import generate_aes_key
 from distributed_state_network.util import stop_thread
+from distributed_state_network.objects.msg_types import MSG_HELLO, MSG_PEERS, MSG_PING, MSG_UPDATE
 
 VERSION = "0.0.3"
 logging.basicConfig(level=logging.INFO)
 
-def respond_bytes(handler: BaseHTTPRequestHandler, data: bytes):
-    handler.send_response(200)
-    handler.send_header("Content-Type", "application/octet-stream")
-    handler.end_headers()
-    handler.wfile.write(data)
-    handler.wfile.flush()
-
-def graceful_fail(httpd: BaseHTTPRequestHandler, body: bytes, fn: Callable):
-    try:
-        fn_result = fn(body)
-        if fn_result is not None:
-            respond_bytes(httpd, httpd.server.node.encrypt_data(fn_result))
-        else:
-            respond_bytes(httpd, b'')
-    except Exception as e:
-        httpd.server.node.logger.error(f"Sending Error: {e.args[0]} {e.args[1]}")
-        httpd.send_response(e.args[0])
-        httpd.end_headers()
-        httpd.wfile.write(e.args[1].encode('utf-8'))
-        httpd.wfile.flush()
-
-class DSNodeHandler(BaseHTTPRequestHandler):
-    server: "NodeServer"
-
-    def do_POST(self):
-        content_length = int(self.headers.get('Content-Length', 0))
-        try:
-            body = self.server.node.decrypt_data(self.rfile.read(content_length))
-        except Exception as e:
-            self.server.node.logger.error(f"{self.path}: Error decrypting data, {e}")
-            respond_bytes(self, b'Not Authorized')
-            return
-
-
-        if self.path == "/hello":
-            graceful_fail(self, body, self.server.node.handle_hello)
-        
-        elif self.path == "/peers":
-            graceful_fail(self, body, self.server.node.handle_peers)
-
-        elif self.path == "/update":
-            graceful_fail(self, body, self.server.node.handle_update)
-
-        elif self.path == "/ping":
-            respond_bytes(self, b'')
-
-        else:
-            self.send_response(404)
-            self.end_headers()
-
-    def log_message(self, format, *args):
-        pass
-
-def serve(httpd):
-    httpd.serve_forever()
-
-class DSNodeServer(HTTPServer):
+class DSNodeServer:
     def __init__(
         self, 
         config: DSNodeConfig,
+        sock: Optional[socket.socket] = None,
         disconnect_callback: Optional[Callable] = None,
         update_callback: Optional[Callable] = None
     ):
-        super().__init__(("0.0.0.0", config.port), DSNodeHandler)
         self.config = config
         self.node = DSNode(config, VERSION, disconnect_callback, update_callback)
-        self.node.logger.info(f'Started DSNode on port {config.port}')
+        self.running = True
+        
+        # Use provided socket or create new one
+        if sock is not None:
+            self.socket = sock
+        else:
+            self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self.socket.bind(("0.0.0.0", config.port))
+        
+        self.node.logger.info(f'Started DSNode on UDP port {config.port}')
 
     def stop(self):
         self.node.shutting_down = True
-        self.shutdown()
-        self.socket.close()
+        self.running = False
+        try:
+            self.socket.close()
+        except:
+            pass
         stop_thread(self.thread)
+
+    def handle_packet(self, data: bytes, addr: tuple):
+        """Handle incoming UDP packet"""
+        try:
+            # Decrypt the data
+            decrypted = self.node.decrypt_data(data)
+            
+            if len(decrypted) == 0:
+                return
+            
+            # First byte is message type
+            msg_type = decrypted[0]
+            body = decrypted[1:]
+            
+            response = None
+            
+            if msg_type == MSG_HELLO:
+                response = self.node.handle_hello(body)
+                
+            elif msg_type == MSG_PEERS:
+                response = self.node.handle_peers(body)
+                
+            elif msg_type == MSG_UPDATE:
+                response = self.node.handle_update(body)
+                
+            elif msg_type == MSG_PING:
+                response = b''
+            
+            # Send response if handler returned data
+            if response is not None:
+                # Prepend message type to response
+                response_with_type = bytes([msg_type]) + response
+                encrypted_response = self.node.encrypt_data(response_with_type)
+                self.socket.sendto(encrypted_response, addr)
+                
+        except Exception as e:
+            if len(e.args) >= 2:
+                self.node.logger.error(f"Error handling packet from {addr}: {e.args[0]} {e.args[1]}")
+            else:
+                self.node.logger.error(f"Error handling packet from {addr}: {e}")
+
+    def serve_forever(self):
+        """Main UDP server loop"""
+        while self.running:
+            try:
+                # Receive UDP packet (max 65507 bytes for UDP)
+                data, addr = self.socket.recvfrom(65507)
+                # Handle packet in separate thread to avoid blocking
+                threading.Thread(target=self.handle_packet, args=(data, addr), daemon=True).start()
+            except OSError:
+                # Socket was closed
+                if not self.running:
+                    break
+            except Exception as e:
+                self.node.logger.error(f"Error in server loop: {e}")
+                if not self.running:
+                    break
 
     @staticmethod
     def generate_key(out_file_path: str):
@@ -93,17 +105,14 @@ class DSNodeServer(HTTPServer):
             f.write(key)
 
     @staticmethod 
-    def start(config: DSNodeConfig, disconnect_callback: Optional[Callable] = None, update_callback: Optional[Callable] = None) -> 'NodeServer':
-        n = DSNodeServer(config, disconnect_callback, update_callback)
-        if config.https:
-            ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-            public_path = n.node.cert_manager.public_path(n.config.node_id)
-            ssl_context.load_cert_chain(
-                certfile=public_path,
-                keyfile=public_path.replace(".crt", ".key")
-            )
-            n.socket = ssl_context.wrap_socket(n.socket, server_side=True)
-        n.thread = threading.Thread(target=serve, args=(n, ))
+    def start(
+        config: DSNodeConfig, 
+        sock: Optional[socket.socket] = None,
+        disconnect_callback: Optional[Callable] = None, 
+        update_callback: Optional[Callable] = None
+    ) -> 'DSNodeServer':
+        n = DSNodeServer(config, sock, disconnect_callback, update_callback)
+        n.thread = threading.Thread(target=n.serve_forever, daemon=True)
         n.thread.start()
 
         if n.config.bootstrap_nodes is not None and len(n.config.bootstrap_nodes) > 0:
