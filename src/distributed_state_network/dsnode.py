@@ -14,10 +14,15 @@ from distributed_state_network.objects.config import DSNodeConfig
 from distributed_state_network.util import get_dict_hash
 from distributed_state_network.util.key_manager import CredentialManager
 from distributed_state_network.util.aes import aes_encrypt, aes_decrypt
-from distributed_state_network.objects.msg_types import MSG_HELLO, MSG_PEERS, MSG_PING, MSG_UPDATE
 
 TICK_INTERVAL = 3
 UDP_TIMEOUT = 2  # seconds
+
+# Message type constants (must match handler.py)
+MSG_HELLO = 1
+MSG_PEERS = 2
+MSG_UPDATE = 3
+MSG_PING = 4
 
 class DSNode:
     config: DSNodeConfig
@@ -29,11 +34,13 @@ class DSNode:
             self, 
             config: DSNodeConfig,
             version: str,
+            sock: Optional[socket.socket] = None,
             disconnect_callback: Optional[Callable] = None,
             update_callback: Optional[Callable] = None
         ):
         self.config = config
         self.version = version
+        self.socket = sock  # Use the server's socket for sending
         
         self.cred_manager = CredentialManager(config.node_id)
         self.cred_manager.generate_keys()
@@ -51,7 +58,16 @@ class DSNode:
         self.update_cb = update_callback
         if not os.path.exists(config.aes_key_file):
             raise Exception(f"Could not find aes key file in {config.aes_key_file}")
+        
+        # Response tracking for request/response matching
+        self.pending_responses = {}
+        self.response_lock = threading.Lock()
+        
         threading.Thread(target=self.network_tick, daemon=True).start()
+
+    def set_socket(self, sock: socket.socket):
+        """Set the socket to use for sending requests"""
+        self.socket = sock
 
     def get_aes_key(self):
         with open(self.config.aes_key_file, 'rb') as f:
@@ -85,35 +101,42 @@ class DSNode:
                         self.disconnect_cb()
 
     def send_udp_request(self, endpoint: Endpoint, msg_type: int, payload: bytes, retries: int = 0) -> bytes:
-        """Send UDP request and wait for response"""
+        """Send UDP request and wait for response using the server's socket"""
+        if self.socket is None:
+            raise Exception("Socket not set. Cannot send UDP request.")
+        
         try:
-            # Create a new socket for this request
-            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            sock.settimeout(UDP_TIMEOUT)
-            
             # Prepend message type to payload
             data_with_type = bytes([msg_type]) + payload
             encrypted_data = self.encrypt_data(data_with_type)
             
-            # Send the packet
-            sock.sendto(encrypted_data, (endpoint.address, endpoint.port))
+            # Create a unique ID for this request based on endpoint and msg type
+            request_id = (endpoint.address, endpoint.port, msg_type)
+            
+            # Set up response tracking
+            response_event = threading.Event()
+            with self.response_lock:
+                self.pending_responses[request_id] = {'event': response_event, 'data': None}
+            
+            # Send the packet using the server's socket
+            self.socket.sendto(encrypted_data, (endpoint.address, endpoint.port))
             
             # Wait for response
-            response_data, _ = sock.recvfrom(65507)
-            sock.close()
-            
-            # Decrypt and validate response
-            decrypted = self.decrypt_data(response_data)
-            
-            if len(decrypted) == 0:
-                return b''
-            
-            # First byte should be the message type
-            response_type = decrypted[0]
-            if response_type != msg_type:
-                raise Exception(f"Response type mismatch: expected {msg_type}, got {response_type}")
-            
-            return decrypted[1:]
+            if response_event.wait(timeout=UDP_TIMEOUT):
+                with self.response_lock:
+                    response_data = self.pending_responses[request_id]['data']
+                    del self.pending_responses[request_id]
+                
+                if response_data is None:
+                    raise Exception("Response was None")
+                
+                return response_data
+            else:
+                # Timeout
+                with self.response_lock:
+                    if request_id in self.pending_responses:
+                        del self.pending_responses[request_id]
+                raise socket.timeout("Request timed out")
             
         except socket.timeout:
             if retries < 2:
@@ -127,6 +150,29 @@ class DSNode:
                 return self.send_udp_request(endpoint, msg_type, payload, retries + 1)
             else:
                 raise Exception(f"UDP request to {endpoint.to_string()} failed: {e}")
+
+    def handle_response(self, data: bytes, addr: tuple):
+        """Handle incoming response and match it to pending request"""
+        try:
+            # Decrypt the data
+            decrypted = self.decrypt_data(data)
+            
+            if len(decrypted) == 0:
+                return
+            
+            # First byte is message type
+            msg_type = decrypted[0]
+            body = decrypted[1:]
+            
+            # Find matching pending request
+            request_id = (addr[0], addr[1], msg_type)
+            
+            with self.response_lock:
+                if request_id in self.pending_responses:
+                    self.pending_responses[request_id]['data'] = body
+                    self.pending_responses[request_id]['event'].set()
+        except Exception as e:
+            self.logger.error(f"Error handling response from {addr}: {e}")
 
     def send_request_to_node(self, node_id: str, msg_type: int, payload: bytes) -> bytes:
         con = self.connection_from_node(node_id)
@@ -209,7 +255,7 @@ class DSNode:
             self.my_con(), 
             self.cred_manager.my_public(), 
             None,
-            None  # No HTTPS certificate for UDP
+            None  # No certificate for UDP
         )
         pkt.sign(self.cred_manager.my_private())
         return pkt

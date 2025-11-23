@@ -6,10 +6,15 @@ from distributed_state_network.dsnode import DSNode
 from distributed_state_network.objects.config import DSNodeConfig
 from distributed_state_network.util.aes import generate_aes_key
 from distributed_state_network.util import stop_thread
-from distributed_state_network.objects.msg_types import MSG_HELLO, MSG_PEERS, MSG_PING, MSG_UPDATE
 
 VERSION = "0.0.3"
 logging.basicConfig(level=logging.INFO)
+
+# Message type constants
+MSG_HELLO = 1
+MSG_PEERS = 2
+MSG_UPDATE = 3
+MSG_PING = 4
 
 class DSNodeServer:
     def __init__(
@@ -20,7 +25,6 @@ class DSNodeServer:
         update_callback: Optional[Callable] = None
     ):
         self.config = config
-        self.node = DSNode(config, VERSION, disconnect_callback, update_callback)
         self.running = True
         
         # Use provided socket or create new one
@@ -30,6 +34,8 @@ class DSNodeServer:
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             self.socket.bind(("0.0.0.0", config.port))
         
+        # Create DSNode with the socket
+        self.node = DSNode(config, VERSION, self.socket, disconnect_callback, update_callback)
         self.node.logger.info(f'Started DSNode on UDP port {config.port}')
 
     def stop(self):
@@ -42,7 +48,7 @@ class DSNodeServer:
         stop_thread(self.thread)
 
     def handle_packet(self, data: bytes, addr: tuple):
-        """Handle incoming UDP packet"""
+        """Handle incoming UDP packet - either a request or a response"""
         try:
             # Decrypt the data
             decrypted = self.node.decrypt_data(data)
@@ -54,26 +60,36 @@ class DSNodeServer:
             msg_type = decrypted[0]
             body = decrypted[1:]
             
-            response = None
+            # Check if this is a response to a pending request
+            request_id = (addr[0], addr[1], msg_type)
+            with self.node.response_lock:
+                is_response = request_id in self.node.pending_responses
             
-            if msg_type == MSG_HELLO:
-                response = self.node.handle_hello(body)
+            if is_response:
+                # This is a response to our request - route to response handler
+                self.node.handle_response(data, addr)
+            else:
+                # This is a new request - handle it
+                response = None
                 
-            elif msg_type == MSG_PEERS:
-                response = self.node.handle_peers(body)
+                if msg_type == MSG_HELLO:
+                    response = self.node.handle_hello(body)
+                    
+                elif msg_type == MSG_PEERS:
+                    response = self.node.handle_peers(body)
+                    
+                elif msg_type == MSG_UPDATE:
+                    response = self.node.handle_update(body)
+                    
+                elif msg_type == MSG_PING:
+                    response = b''
                 
-            elif msg_type == MSG_UPDATE:
-                response = self.node.handle_update(body)
-                
-            elif msg_type == MSG_PING:
-                response = b''
-            
-            # Send response if handler returned data
-            if response is not None:
-                # Prepend message type to response
-                response_with_type = bytes([msg_type]) + response
-                encrypted_response = self.node.encrypt_data(response_with_type)
-                self.socket.sendto(encrypted_response, addr)
+                # Send response if handler returned data
+                if response is not None:
+                    # Prepend message type to response
+                    response_with_type = bytes([msg_type]) + response
+                    encrypted_response = self.node.encrypt_data(response_with_type)
+                    self.socket.sendto(encrypted_response, addr)
                 
         except Exception as e:
             if len(e.args) >= 2:
