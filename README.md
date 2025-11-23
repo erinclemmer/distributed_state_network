@@ -85,9 +85,9 @@ for node_id in monitor.node.peers():
   
 ### Documentation
 * [Usage Examples](./documentation/usage.md)  
-* [Configuration Class] (./documentation/ds-node-config.md)
-* [Server Class] (./documentation/ds-node-server.md)
-* [Protocol Class] (./documentation/ds-node.md)
+* [Configuration Class](./documentation/ds-node-config.md)
+* [Server Class](./documentation/ds-node-server.md)
+* [Protocol Class](./documentation/ds-node.md)
 * [Protocol](./documentation/protocol.md)
 
 #### API Reference
