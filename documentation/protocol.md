@@ -1,66 +1,114 @@
 ## Network Protocol
 
 ### Transport Layer
-The network now uses **UDP (User Datagram Protocol)** for all communication instead of HTTP/HTTPS. This provides:
-- Lower latency for peer-to-peer communication
-- Reduced overhead compared to HTTP
-- Simpler connection management
-- More suitable for real-time distributed systems
+The network now uses **HTTP (HyperText Transfer Protocol)** with a Flask server for all communication. This provides:
+- Standard HTTP semantics for request/response patterns
+- Better compatibility with firewalls and proxies
+- Built-in error handling with HTTP status codes
+- Easy integration with monitoring and debugging tools
+- More flexible for future enhancements
+
+### Message Types and Endpoints
+All HTTP requests use specific endpoints to identify the packet type:
+
+- **POST /hello**: Exchange node information and credentials
+- **POST /peers**: Request/share peer list
+- **POST /update**: Send/receive state updates
+- **POST /ping**: Connectivity check
+
+### Packet Structure
+Each HTTP request follows this structure:
+1. **HTTP POST request** to the appropriate endpoint
+2. **Request Body**: AES Encrypted Payload containing:
+   - Message type (1 byte) - for verification
+   - Message payload (variable length)
+3. **Response Body**: AES Encrypted Payload containing:
+   - Message type (1 byte) - matches request type
+   - Response payload (variable length)
 
 ### Message Types
-All UDP packets use a message type byte prefix to identify the packet type:
-
+Internal message type constants (used for verification):
 - **Type 1 (HELLO)**: Exchange node information and credentials
 - **Type 2 (PEERS)**: Request/share peer list
 - **Type 3 (UPDATE)**: Send/receive state updates
 - **Type 4 (PING)**: Connectivity check
 
-### Packet Structure
-Each UDP packet follows this structure:
-1. **AES Encrypted Payload** containing:
-   - Message type (1 byte)
-   - Response bit (1 byte): 0 for requests, 1 for responses
-   - Message payload (variable length)
-
 ### Security
 - All communication is encrypted using AES with a shared key
 - Messages are signed using ECDSA for authentication
-- UDP packets are encrypted end-to-end
-- HTTPS/TLS is not supported with UDP (certificates are no longer used)
+- HTTP request/response bodies are encrypted end-to-end
+- HTTPS/TLS can be added by placing a reverse proxy (nginx, apache) in front of the Flask server
 
 ### State Synchronization
 - Nodes maintain a copy of all peers' states
 - Updates are broadcast to all connected peers
 - Timestamps prevent older updates from overwriting newer ones
 
-### Socket Management
-- You can provide a custom UDP socket when starting a server
-- If no socket is provided, one will be created and bound automatically
-- Socket timeout is set to 2 seconds for requests
-- Maximum UDP packet size is 65507 bytes
+### HTTP Server Configuration
+- Flask server runs on specified port with threading enabled
+- Default timeout is 5 seconds for requests
+- Maximum retry attempts: 3 with 0.5 second delay between retries
+- Server runs in a separate daemon thread
+
+### HTTP Status Codes
+- **200 OK**: Successful request with response data
+- **204 No Content**: Successful request with no response data (e.g., some HELLO responses)
+- **400 Bad Request**: Malformed request or message type mismatch
+- **401 Unauthorized**: Signature verification failed
+- **406 Not Acceptable**: Invalid data, stale update, or other validation error
+- **500 Internal Server Error**: Unexpected server error
+- **505 HTTP Version Not Supported**: Used for version mismatch errors
 
 ## Important Notes
 
 1. **Shared AES Key**: All nodes in the network must use the same AES key file
 2. **Unique Node IDs**: Each node must have a unique node_id
-3. **Port Availability**: Ensure the specified UDP port is available before starting
+3. **Port Availability**: Ensure the specified HTTP port is available before starting
 4. **Bootstrap Nodes**: At least one bootstrap node is required to join an existing network
 5. **Network Tick**: The network performs maintenance checks every 3 seconds
 6. **Credential Management**: ECDSA keys are automatically generated and stored in `credentials/` directory
-7. **UDP Reliability**: The protocol implements retry logic (up to 3 attempts) for failed requests
-8. **HTTPS Not Supported**: The `https` configuration option is ignored when using UDP
+7. **HTTP Reliability**: The protocol implements retry logic (up to 3 attempts) for failed requests
+8. **HTTPS Support**: While the base implementation uses HTTP, you can add HTTPS by:
+   - Using a reverse proxy (nginx, apache) with SSL certificates
+   - Configuring Flask with SSL context (requires certificate files)
 
 ## Error Handling
 
-Common error codes (embedded in exception messages):
+Common error codes:
 - **401**: Not Authorized (signature verification failed)
 - **406**: Not Acceptable (invalid data, stale update, or version mismatch)
 - **505**: Version not supported
 
-## Migration from HTTP
+## Migration from UDP
 
-If you're migrating from the HTTP-based version:
-1. Remove any HTTPS certificate dependencies
-2. Update firewall rules to allow UDP traffic on your ports
-3. The API remains largely the same, but transport is now UDP
-4. The `https` flag in configuration is now ignored
+If you're migrating from the UDP-based version:
+1. Install Flask: The dependency is now included in pyproject.toml
+2. Update firewall rules to allow HTTP traffic on your ports instead of UDP
+3. The API remains largely the same, but transport is now HTTP
+4. HTTP endpoints replace UDP message types for routing
+5. Consider adding HTTPS via reverse proxy for production deployments
+
+## Example URLs
+
+For a node running on `192.168.1.100:8080`:
+- HELLO endpoint: `http://192.168.1.100:8080/hello`
+- PEERS endpoint: `http://192.168.1.100:8080/peers`
+- UPDATE endpoint: `http://192.168.1.100:8080/update`
+- PING endpoint: `http://192.168.1.100:8080/ping`
+
+## Request Flow
+
+1. **Client prepares message**: Message type byte + payload
+2. **Client encrypts**: AES encryption applied to entire message
+3. **Client sends**: HTTP POST to appropriate endpoint
+4. **Server receives**: Flask routes to appropriate handler
+5. **Server decrypts**: AES decryption applied
+6. **Server validates**: Message type verification, signature checks
+7. **Server processes**: Business logic executed
+8. **Server prepares response**: Message type byte + response payload
+9. **Server encrypts**: AES encryption applied
+10. **Server sends**: HTTP response with encrypted body
+11. **Client receives**: Response status and body
+12. **Client decrypts**: AES decryption applied
+13. **Client validates**: Message type verification
+14. **Client processes**: Response data used

@@ -33,7 +33,7 @@ def start_node(node_id: str, bootstrap_port: int = None, disconnect_cb: Optional
     else:
         args["bootstrap_nodes"] = []
 
-    return DSNodeServer.start(DSNodeConfig(**args), None, disconnect_cb, update_cb)
+    return DSNodeServer.start(DSNodeConfig(**args), disconnect_cb, update_cb)
 
 class ConnectionsTest(unittest.TestCase):
     def test_one(self):

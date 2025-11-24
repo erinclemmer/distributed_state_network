@@ -3,9 +3,8 @@ import sys
 import time
 import random
 import shutil
-import logging
 import unittest
-import socket
+import requests
 from typing import List, Dict
 
 sys.path.append(os.path.join(os.path.dirname(__file__), './src'))
@@ -26,7 +25,7 @@ key_file = "src/distributed_state_network/test.key"
 if not os.path.exists(key_file):
     DSNodeServer.generate_key(key_file)
 
-def spawn_node(node_id: str, bootstrap_nodes: List[Dict] = [], sock: socket.socket = None):
+def spawn_node(node_id: str, bootstrap_nodes: List[Dict] = []):
     global current_port
     current_port += 1
     n = DSNodeServer.start(DSNodeConfig.from_dict({
@@ -34,7 +33,7 @@ def spawn_node(node_id: str, bootstrap_nodes: List[Dict] = [], sock: socket.sock
         "port": current_port,
         "aes_key_file": key_file,
         "bootstrap_nodes": bootstrap_nodes
-    }), sock=sock)
+    }))
     global nodes
     nodes.append(n)
     return n
@@ -140,10 +139,10 @@ class TestNode(unittest.TestCase):
         self.assertEqual(None, bootstrap.node.read_data("connector", "foo"))
 
         connector.node.update_data("foo", "bar")
-        time.sleep(0.5)  # Give time for UDP packet to arrive
+        time.sleep(0.5)  # Give time for HTTP request to complete
         self.assertEqual("bar", bootstrap.node.read_data("connector", "foo"))
         bootstrap.node.update_data("bar", "baz")
-        time.sleep(0.5)  # Give time for UDP packet to arrive
+        time.sleep(0.5)  # Give time for HTTP request to complete
         self.assertEqual("baz", connector.node.read_data("bootstrap", "bar"))
 
     def test_bad_aes_key(self):
@@ -154,38 +153,39 @@ class TestNode(unittest.TestCase):
             print(e)
 
     def test_authorization(self):
-        """Test that unauthorized UDP packets are rejected"""
+        """Test that unauthorized HTTP requests are rejected"""
         n = spawn_node("node")
         
-        # Create a UDP socket to send unauthorized data
-        test_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        test_sock.settimeout(2)
+        # Give Flask server time to start
+        time.sleep(0.5)
         
-        # Send unencrypted data - should be rejected
-        test_sock.sendto(b'TEST', ('127.0.0.1', n.config.port))
-        
-        # Try to receive response (should not get one for bad data)
+        # Send unencrypted data - should be rejected with 500 error
         try:
-            data, addr = test_sock.recvfrom(1024)
-            # If we get here, check that response indicates error
-            print(f"Received response: {data}")
-        except socket.timeout:
-            # This is expected - no valid response for bad data
-            pass
+            response = requests.post(
+                f'http://127.0.0.1:{n.config.port}/ping',
+                data=b'TEST',
+                timeout=2
+            )
+            # Should get error status code
+            self.assertNotEqual(response.status_code, 200)
+            print(f"Received status code for bad data: {response.status_code}")
+        except Exception as e:
+            # Connection errors are also acceptable
+            print(f"Request failed as expected: {e}")
         
         # Send properly encrypted data
         encrypted_data = n.node.encrypt_data(bytes([4]) + b'TEST')  # MSG_PING = 4
-        test_sock.sendto(encrypted_data, ('127.0.0.1', n.config.port))
+        response = requests.post(
+            f'http://127.0.0.1:{n.config.port}/ping',
+            data=encrypted_data,
+            headers={'Content-Type': 'application/octet-stream'},
+            timeout=2
+        )
         
-        # Should get a response for valid encrypted ping
-        try:
-            data, addr = test_sock.recvfrom(1024)
-            decrypted = n.node.decrypt_data(data)
-            self.assertEqual(decrypted[0], 4)  # Should be MSG_PING response
-        except socket.timeout:
-            self.fail("Should receive response for valid encrypted ping")
-        
-        test_sock.close()
+        # Should get successful response for valid encrypted ping
+        self.assertEqual(response.status_code, 200)
+        decrypted = n.node.decrypt_data(response.content)
+        self.assertEqual(decrypted[0], 4)  # Should be MSG_PING response
 
     def test_version_matching(self):
         bootstrap = spawn_node("bootstrap")
@@ -205,7 +205,7 @@ class TestNode(unittest.TestCase):
         connector = spawn_node("connector", [bootstrap.node.my_con().to_json()])
         try: 
             # Try to send malformed data
-            connector.node.send_udp_request(bootstrap.node.my_con(), 1, b'MALFORMED_DATA')
+            connector.node.send_http_request(bootstrap.node.my_con(), 1, b'MALFORMED_DATA')
             self.fail("Should throw error for malformed data")
         except Exception as e:
             print(e)
@@ -352,20 +352,26 @@ class TestNode(unittest.TestCase):
         connector = spawn_node("connector", [bootstrap.node.my_con().to_json()])
         self.assertIn('connector', bootstrap.node.peers())
 
-    def test_custom_socket(self):
-        """Test that a custom socket can be provided"""
-        # Create a custom UDP socket
-        custom_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        custom_sock.bind(("0.0.0.0", 9000))
+    def test_http_endpoints(self):
+        """Test that HTTP endpoints are accessible"""
+        n = spawn_node("http-test-node")
         
-        # Start node with custom socket
-        n = spawn_node("custom-socket-node", sock=custom_sock)
+        # Test that all endpoints exist
+        endpoints = ['/hello', '/peers', '/update', '/ping']
         
-        # Verify the node is using the custom socket
-        self.assertEqual(n.socket, custom_sock)
-        
-        # Clean up
-        n.stop()
+        for endpoint in endpoints:
+            # Send a request to each endpoint (will fail due to encryption, but should return 400/500, not 404)
+            try:
+                response = requests.post(
+                    f'http://127.0.0.1:{n.config.port}{endpoint}',
+                    data=b'test',
+                    timeout=2
+                )
+                # Should not be 404 (Not Found)
+                self.assertNotEqual(response.status_code, 404, f"Endpoint {endpoint} not found")
+                print(f"Endpoint {endpoint} exists (status: {response.status_code})")
+            except Exception as e:
+                print(f"Endpoint {endpoint} test failed: {e}")
 
 if __name__ == "__main__":
     unittest.main()

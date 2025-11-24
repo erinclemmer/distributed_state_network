@@ -1,8 +1,8 @@
 import os
 import time
-import socket
 import logging
 import threading
+import requests
 from typing import Dict, List, Optional, Callable
 
 from distributed_state_network.objects.endpoint import Endpoint
@@ -16,13 +16,21 @@ from distributed_state_network.util.key_manager import CredentialManager
 from distributed_state_network.util.aes import aes_encrypt, aes_decrypt
 
 TICK_INTERVAL = 3
-UDP_TIMEOUT = 2  # seconds
+HTTP_TIMEOUT = 2  # seconds
 
 # Message type constants (must match handler.py)
 MSG_HELLO = 1
 MSG_PEERS = 2
 MSG_UPDATE = 3
 MSG_PING = 4
+
+# Map message types to endpoint paths
+MSG_TYPE_TO_PATH = {
+    MSG_HELLO: '/hello',
+    MSG_PEERS: '/peers',
+    MSG_UPDATE: '/update',
+    MSG_PING: '/ping'
+}
 
 class DSNode:
     config: DSNodeConfig
@@ -34,13 +42,12 @@ class DSNode:
             self, 
             config: DSNodeConfig,
             version: str,
-            sock: Optional[socket.socket] = None,
             disconnect_callback: Optional[Callable] = None,
             update_callback: Optional[Callable] = None
         ):
         self.config = config
         self.version = version
-        self.socket = sock  # Use the server's socket for sending
+        self.server = None  # Reference to the Flask server
         
         self.cred_manager = CredentialManager(config.node_id)
         self.cred_manager.generate_keys()
@@ -61,15 +68,11 @@ class DSNode:
         if not os.path.exists(config.aes_key_file):
             raise Exception(f"Could not find aes key file in {config.aes_key_file}")
         
-        # Response tracking for request/response matching
-        self.pending_responses = {}
-        self.response_lock = threading.Lock()
-        
         threading.Thread(target=self.network_tick, daemon=True).start()
 
-    def set_socket(self, sock: socket.socket):
-        """Set the socket to use for sending requests"""
-        self.socket = sock
+    def set_server(self, server):
+        """Set reference to the Flask server"""
+        self.server = server
 
     def get_aes_key(self):
         with open(self.config.aes_key_file, 'rb') as f:
@@ -102,86 +105,68 @@ class DSNode:
                     if self.disconnect_cb is not None:
                         self.disconnect_cb()
 
-    def send_udp_request(self, endpoint: Endpoint, msg_type: int, payload: bytes, retries: int = 0) -> bytes:
-        """Send UDP request and wait for response using the server's socket"""
-        if self.socket is None:
-            raise Exception("Socket not set. Cannot send UDP request.")
-        
+    def send_http_request(self, endpoint: Endpoint, msg_type: int, payload: bytes, retries: int = 0) -> bytes:
+        """Send HTTP request and wait for response"""
         try:
-            # Prepend message type and response bit (0 for request) to payload
-            data_with_type = bytes([msg_type, 0]) + payload
+            # Prepend message type to payload
+            data_with_type = bytes([msg_type]) + payload
             encrypted_data = self.encrypt_data(data_with_type)
             
-            # Create a unique ID for this request based on endpoint and msg type
-            request_id = (endpoint.address, endpoint.port, msg_type)
+            # Determine the URL path based on message type
+            path = MSG_TYPE_TO_PATH.get(msg_type, '/unknown')
+            url = f"http://{endpoint.address}:{endpoint.port}{path}"
             
-            # Set up response tracking
-            response_event = threading.Event()
-            with self.response_lock:
-                self.pending_responses[request_id] = {'event': response_event, 'data': None}
+            # Send HTTP POST request
+            response = requests.post(
+                url,
+                data=encrypted_data,
+                headers={'Content-Type': 'application/octet-stream'},
+                timeout=HTTP_TIMEOUT
+            )
             
-            # Send the packet using the server's socket
-            self.socket.sendto(encrypted_data, (endpoint.address, endpoint.port))
+            # Check response status
+            if response.status_code == 204:
+                # No content - valid for some responses like successful HELLO with no data
+                return b''
+            elif response.status_code != 200:
+                raise Exception(f"HTTP error: {response.status_code}")
             
-            # Wait for response
-            if response_event.wait(timeout=UDP_TIMEOUT):
-                with self.response_lock:
-                    response_data = self.pending_responses[request_id]['data']
-                    del self.pending_responses[request_id]
-                
-                if response_data is None:
-                    raise Exception("Response was None")
-                
-                return response_data
-            else:
-                # Timeout
-                with self.response_lock:
-                    if request_id in self.pending_responses:
-                        del self.pending_responses[request_id]
-                raise socket.timeout("Request timed out")
+            # Decrypt the response
+            decrypted = self.decrypt_data(response.content)
             
-        except socket.timeout:
+            if len(decrypted) < 1:
+                raise Exception("Empty response")
+            
+            # First byte is message type
+            response_msg_type = decrypted[0]
+            if response_msg_type != msg_type:
+                raise Exception(f"Response message type mismatch: expected {msg_type}, got {response_msg_type}")
+            
+            # Return the body (everything after the message type byte)
+            return decrypted[1:]
+            
+        except requests.exceptions.Timeout:
             if retries < 2:
                 time.sleep(0.5)
-                return self.send_udp_request(endpoint, msg_type, payload, retries + 1)
+                return self.send_http_request(endpoint, msg_type, payload, retries + 1)
             else:
-                raise Exception(f"UDP request to {endpoint.to_string()} timed out")
+                raise Exception(f"HTTP request to {endpoint.to_string()} timed out")
+        except requests.exceptions.RequestException as e:
+            if retries < 2:
+                time.sleep(0.5)
+                return self.send_http_request(endpoint, msg_type, payload, retries + 1)
+            else:
+                raise Exception(f"HTTP request to {endpoint.to_string()} failed: {e}")
         except Exception as e:
             if retries < 2:
                 time.sleep(0.5)
-                return self.send_udp_request(endpoint, msg_type, payload, retries + 1)
+                return self.send_http_request(endpoint, msg_type, payload, retries + 1)
             else:
-                raise Exception(f"UDP request to {endpoint.to_string()} failed: {e}")
-
-    def handle_response(self, data: bytes, addr: tuple):
-        """Handle incoming response and match it to pending request"""
-        try:
-            # Decrypt the data
-            decrypted = self.decrypt_data(data)
-            
-            if len(decrypted) < 2:
-                return
-            
-            # First byte is message type, second byte is response bit
-            msg_type = decrypted[0]
-            is_response = decrypted[1]
-            if not is_response:
-                return
-            body = decrypted[2:]
-            
-            # Find matching pending request
-            request_id = (addr[0], addr[1], msg_type)
-            
-            with self.response_lock:
-                if request_id in self.pending_responses:
-                    self.pending_responses[request_id]['data'] = body
-                    self.pending_responses[request_id]['event'].set()
-        except Exception as e:
-            self.logger.error(f"Error handling response from {addr}: {e}")
+                raise Exception(f"HTTP request to {endpoint.to_string()} failed: {e}")
 
     def send_request_to_node(self, node_id: str, msg_type: int, payload: bytes) -> bytes:
         con = self.connection_from_node(node_id)
-        return self.send_udp_request(con, msg_type, payload)
+        return self.send_http_request(con, msg_type, payload)
 
     def encrypt_data(self, data: bytes) -> bytes:
         return aes_encrypt(self.get_aes_key(), data)
@@ -229,7 +214,7 @@ class DSNode:
         self.logger.info(f"HELLO => {con.to_string()}")
 
         payload = self.my_hello_packet().to_bytes()
-        content = self.send_udp_request(con, MSG_HELLO, payload)
+        content = self.send_http_request(con, MSG_HELLO, payload)
         
         # Get the response packet
         pkt = HelloPacket.from_bytes(content)
@@ -289,7 +274,7 @@ class DSNode:
             self.my_con(), 
             self.cred_manager.my_public(), 
             None,
-            None  # No certificate for UDP
+            None  # No certificate for HTTP
         )
         pkt.sign(self.cred_manager.my_private())
         return pkt

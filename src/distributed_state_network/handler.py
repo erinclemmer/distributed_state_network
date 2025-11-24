@@ -1,14 +1,18 @@
-import socket
+import sys
 import threading
 import logging
 from typing import Callable, Optional
+from flask import Flask, request, Response
 from distributed_state_network.dsnode import DSNode
 from distributed_state_network.objects.config import DSNodeConfig
 from distributed_state_network.util.aes import generate_aes_key
 from distributed_state_network.util import stop_thread
 
-VERSION = "0.3.0"
+VERSION = "0.4.0"
 logging.basicConfig(level=logging.INFO)
+
+# Silence Flask and Werkzeug logging
+logging.getLogger('werkzeug').setLevel(logging.ERROR)
 
 # Message type constants
 MSG_HELLO = 1
@@ -20,102 +24,110 @@ class DSNodeServer:
     def __init__(
         self, 
         config: DSNodeConfig,
-        sock: Optional[socket.socket] = None,
         disconnect_callback: Optional[Callable] = None,
         update_callback: Optional[Callable] = None
     ):
         self.config = config
-        self.running = True
-        
-        # Use provided socket or create new one
-        if sock is not None:
-            self.socket = sock
-        else:
-            self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            self.socket.bind(("0.0.0.0", config.port))
-        
-        # Create DSNode with the socket
-        self.node = DSNode(config, VERSION, self.socket, disconnect_callback, update_callback)
-        self.node.logger.info(f'Started DSNode on UDP port {config.port}')
-
-    def stop(self):
-        self.node.shutting_down = True
         self.running = False
-        try:
-            self.socket.close()
-        except:
-            pass
-        stop_thread(self.thread)
+        
+        # Create Flask app
+        self.app = Flask(__name__)
+        self.app.logger.setLevel(logging.ERROR)  # Reduce Flask's logging noise
+        
+        # Create DSNode
+        self.node = DSNode(config, VERSION, disconnect_callback, update_callback)
+        self.node.set_server(self)  # Give node reference to server for making HTTP requests
+        
+        # Set up Flask routes
+        self._setup_routes()
 
-    def handle_packet(self, data: bytes, addr: tuple):
-        """Handle incoming UDP packet - either a request or a response"""
+    def _setup_routes(self):
+        """Set up Flask routes for each message type"""
+        
+        @self.app.route('/hello', methods=['POST'])
+        def handle_hello_route():
+            return self._handle_request(MSG_HELLO, request.data, request.remote_addr)
+        
+        @self.app.route('/peers', methods=['POST'])
+        def handle_peers_route():
+            return self._handle_request(MSG_PEERS, request.data, request.remote_addr)
+        
+        @self.app.route('/update', methods=['POST'])
+        def handle_update_route():
+            return self._handle_request(MSG_UPDATE, request.data, request.remote_addr)
+        
+        @self.app.route('/ping', methods=['POST'])
+        def handle_ping_route():
+            return self._handle_request(MSG_PING, request.data, request.remote_addr)
+
+    def _handle_request(self, msg_type: int, data: bytes, remote_addr: str) -> Response:
+        if not self.running:
+            return Response(status=500)
+        """Handle incoming HTTP request"""
         try:
             # Decrypt the data
             decrypted = self.node.decrypt_data(data)
             
-            if len(decrypted) < 2:
-                return
+            if len(decrypted) < 1:
+                return Response(status=400)
             
-            # First byte is message type, second byte is response bit
-            msg_type = decrypted[0]
-            is_response = decrypted[1]
-            body = decrypted[2:]
+            # First byte should be message type (for verification)
+            received_msg_type = decrypted[0]
+            body = decrypted[1:]
             
-            # Check if this is a response (either by bit flag or by pending request)
-            request_id = (addr[0], addr[1], msg_type)
-            with self.node.response_lock:
-                has_pending_request = request_id in self.node.pending_responses
+            if received_msg_type != msg_type:
+                self.node.logger.error(f"Message type mismatch: expected {msg_type}, got {received_msg_type}")
+                return Response(status=400)
             
-            if is_response == 1 or has_pending_request:
-                # This is a response to our request - route to response handler
-                self.node.handle_response(data, addr)
+            response_data = None
+            
+            if msg_type == MSG_HELLO:
+                # Pass the detected IP address to handle_hello
+                response_data = self.node.handle_hello(body, remote_addr)
+                
+            elif msg_type == MSG_PEERS:
+                response_data = self.node.handle_peers(body)
+                
+            elif msg_type == MSG_UPDATE:
+                response_data = self.node.handle_update(body)
+                
+            elif msg_type == MSG_PING:
+                response_data = b''
+            
+            # Send response if handler returned data
+            if response_data is not None:
+                # Prepend message type to response
+                response_with_type = bytes([msg_type]) + response_data
+                encrypted_response = self.node.encrypt_data(response_with_type)
+                return Response(encrypted_response, status=200, mimetype='application/octet-stream')
             else:
-                # This is a new request - handle it
-                response = None
-                
-                if msg_type == MSG_HELLO:
-                    # Pass the detected IP address to handle_hello
-                    response = self.node.handle_hello(body, addr[0])
-                    
-                elif msg_type == MSG_PEERS:
-                    response = self.node.handle_peers(body)
-                    
-                elif msg_type == MSG_UPDATE:
-                    response = self.node.handle_update(body)
-                    
-                elif msg_type == MSG_PING:
-                    response = b''
-                
-                # Send response if handler returned data
-                if response is not None:
-                    # Prepend message type and response bit (1 for response) to response
-                    response_with_type = bytes([msg_type, 1]) + response
-                    encrypted_response = self.node.encrypt_data(response_with_type)
-                    self.socket.sendto(encrypted_response, addr)
+                return Response(status=204)  # No content
                 
         except Exception as e:
-            if len(e.args) >= 2:
-                self.node.logger.error(f"Error handling packet from {addr}: {e.args[0]} {e.args[1]}")
+            if len(e.args) >= 2 and isinstance(e.args[0], int):
+                # Error with HTTP status code
+                self.node.logger.error(f"Error handling {msg_type} from {remote_addr}: {e.args[1]}")
+                return Response(status=e.args[0])
             else:
-                self.node.logger.error(f"Error handling packet from {addr}: {e}")
+                self.node.logger.error(f"Error handling {msg_type} from {remote_addr}: {e}")
+                return Response(status=500)
 
-    def serve_forever(self):
-        """Main UDP server loop"""
-        while self.running:
-            try:
-                # Receive UDP packet (max 65507 bytes for UDP)
-                data, addr = self.socket.recvfrom(65507)
-                if self.running:
-                    # Handle packet in separate thread to avoid blocking
-                    threading.Thread(target=self.handle_packet, args=(data, addr), daemon=True).start()
-            except OSError:
-                # Socket was closed
-                if not self.running:
-                    break
-            except Exception as e:
-                self.node.logger.error(f"Error in server loop: {e}")
-                if not self.running:
-                    break
+    def stop(self):
+        self.node.shutting_down = True
+        self.running = False
+        if hasattr(self, 'thread'):
+            stop_thread(self.thread)
+
+    def serve_forever(self, port: int):
+        if self.running:
+            return
+        # Suppress Flask startup messages
+        cli = sys.modules['flask.cli']
+        cli.show_server_banner = lambda *x: None
+        
+        self.running = True
+        self.app.run(host='0.0.0.0', port=port, threaded=True, use_reloader=False)
+        self.node.logger.info(f'Started DSNode on HTTP port {port}')
 
     @staticmethod
     def generate_key(out_file_path: str):
@@ -126,12 +138,11 @@ class DSNodeServer:
     @staticmethod 
     def start(
         config: DSNodeConfig, 
-        sock: Optional[socket.socket] = None,
         disconnect_callback: Optional[Callable] = None, 
         update_callback: Optional[Callable] = None
     ) -> 'DSNodeServer':
-        n = DSNodeServer(config, sock, disconnect_callback, update_callback)
-        n.thread = threading.Thread(target=n.serve_forever, daemon=True)
+        n = DSNodeServer(config, disconnect_callback, update_callback)
+        n.thread = threading.Thread(target=n.serve_forever, daemon=True, args=(config.port, ))
         n.thread.start()
 
         if n.config.bootstrap_nodes is not None and len(n.config.bootstrap_nodes) > 0:

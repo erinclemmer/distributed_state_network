@@ -1,10 +1,10 @@
 [build-system]
-requires = ["hatchling", "cryptography", "logging", "ipaddress", "requests", "ecdsa"]
+requires = ["hatchling", "cryptography", "logging", "ipaddress", "requests", "ecdsa", "flask"]
 build-backend = "hatchling.build"
 
 [project]
 name = "distributed-state-network"
-version = "0.3.0"
+version = "0.4.0"
 authors = [{name="Erin Clemmer", email="erin.c.clemmer@gmail.com"}]
 description = "A tool to distribute the state of a network device to other devices on the network"
 keywords = ["distributed", "networking"]
@@ -26,7 +26,8 @@ dependencies = [
     "logging",
     "ipaddress",
     "requests",
-    "ecdsa"
+    "ecdsa",
+    "flask"
 ]
 
 [project.urls]
