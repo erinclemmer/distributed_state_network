@@ -165,6 +165,8 @@ class DSNode:
             # First byte is message type, second byte is response bit
             msg_type = decrypted[0]
             is_response = decrypted[1]
+            if not is_response:
+                return
             body = decrypted[2:]
             
             # Find matching pending request
@@ -257,7 +259,7 @@ class DSNode:
 
         return pkt.node_id
 
-    def handle_hello(self, data: bytes, detected_address: str = None) -> bytes:
+    def handle_hello(self, data: bytes, detected_address: str = None) -> bytes | None:
         pkt = HelloPacket.from_bytes(data)
         self.logger.info(f"Received HELLO from {pkt.node_id}")
         if pkt.version != self.version:
@@ -269,6 +271,8 @@ class DSNode:
         
         if pkt.node_id not in self.address_book:
             self.address_book[pkt.node_id] = pkt.connection
+        else:
+            return None
 
         if pkt.node_id not in self.node_states:
             self.node_states[pkt.node_id] = StatePacket(pkt.node_id, 0, b'', { })
