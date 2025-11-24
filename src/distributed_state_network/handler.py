@@ -104,8 +104,9 @@ class DSNodeServer:
             try:
                 # Receive UDP packet (max 65507 bytes for UDP)
                 data, addr = self.socket.recvfrom(65507)
-                # Handle packet in separate thread to avoid blocking
-                threading.Thread(target=self.handle_packet, args=(data, addr), daemon=True).start()
+                if self.running:
+                    # Handle packet in separate thread to avoid blocking
+                    threading.Thread(target=self.handle_packet, args=(data, addr), daemon=True).start()
             except OSError:
                 # Socket was closed
                 if not self.running:
