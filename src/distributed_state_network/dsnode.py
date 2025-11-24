@@ -108,8 +108,8 @@ class DSNode:
             raise Exception("Socket not set. Cannot send UDP request.")
         
         try:
-            # Prepend message type to payload
-            data_with_type = bytes([msg_type]) + payload
+            # Prepend message type and response bit (0 for request) to payload
+            data_with_type = bytes([msg_type, 0]) + payload
             encrypted_data = self.encrypt_data(data_with_type)
             
             # Create a unique ID for this request based on endpoint and msg type
@@ -159,12 +159,13 @@ class DSNode:
             # Decrypt the data
             decrypted = self.decrypt_data(data)
             
-            if len(decrypted) == 0:
+            if len(decrypted) < 2:
                 return
             
-            # First byte is message type
+            # First byte is message type, second byte is response bit
             msg_type = decrypted[0]
-            body = decrypted[1:]
+            is_response = decrypted[1]
+            body = decrypted[2:]
             
             # Find matching pending request
             request_id = (addr[0], addr[1], msg_type)

@@ -7,7 +7,7 @@ from distributed_state_network.objects.config import DSNodeConfig
 from distributed_state_network.util.aes import generate_aes_key
 from distributed_state_network.util import stop_thread
 
-VERSION = "0.2.1"
+VERSION = "0.3.0"
 logging.basicConfig(level=logging.INFO)
 
 # Message type constants
@@ -53,19 +53,20 @@ class DSNodeServer:
             # Decrypt the data
             decrypted = self.node.decrypt_data(data)
             
-            if len(decrypted) == 0:
+            if len(decrypted) < 2:
                 return
             
-            # First byte is message type
+            # First byte is message type, second byte is response bit
             msg_type = decrypted[0]
-            body = decrypted[1:]
+            is_response = decrypted[1]
+            body = decrypted[2:]
             
-            # Check if this is a response to a pending request
+            # Check if this is a response (either by bit flag or by pending request)
             request_id = (addr[0], addr[1], msg_type)
             with self.node.response_lock:
-                is_response = request_id in self.node.pending_responses
+                has_pending_request = request_id in self.node.pending_responses
             
-            if is_response:
+            if is_response == 1 or has_pending_request:
                 # This is a response to our request - route to response handler
                 self.node.handle_response(data, addr)
             else:
@@ -87,8 +88,8 @@ class DSNodeServer:
                 
                 # Send response if handler returned data
                 if response is not None:
-                    # Prepend message type to response
-                    response_with_type = bytes([msg_type]) + response
+                    # Prepend message type and response bit (1 for response) to response
+                    response_with_type = bytes([msg_type, 1]) + response
                     encrypted_response = self.node.encrypt_data(response_with_type)
                     self.socket.sendto(encrypted_response, addr)
                 

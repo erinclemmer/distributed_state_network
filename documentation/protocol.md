@@ -19,6 +19,7 @@ All UDP packets use a message type byte prefix to identify the packet type:
 Each UDP packet follows this structure:
 1. **AES Encrypted Payload** containing:
    - Message type (1 byte)
+   - Response bit (1 byte): 0 for requests, 1 for responses
    - Message payload (variable length)
 
 ### Security
