@@ -12,6 +12,7 @@ from distributed_state_network import DSNodeConfig
 class DSNodeConfig:
     node_id: str
     port: int
+    credential_dir: str
     aes_key: str
     bootstrap_nodes: List[Endpoint]
 ```
@@ -19,6 +20,7 @@ class DSNodeConfig:
 ### Attributes
 - **node_id** (`str`): Unique identifier for the node
 - **port** (`int`): Port number for the node to listen on (UDP)
+- **credential_dir**: (`str`) directory to store ECDSA credentials (default: "[current_directory]/credentials")
 - **aes_key** (`str`): Hexidecimal encoded AES key for network encryption
 - **bootstrap_nodes** (`List[Endpoint]`): List of initial nodes to connect to when joining the network
 

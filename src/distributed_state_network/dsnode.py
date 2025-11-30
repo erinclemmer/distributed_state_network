@@ -49,7 +49,7 @@ class DSNode:
         self.version = version
         self.server = None  # Reference to the Flask server
         
-        self.cred_manager = CredentialManager("credentials", config.node_id)
+        self.cred_manager = CredentialManager(config.credential_dir, config.node_id)
         self.cred_manager.generate_keys()
         
         self.node_states = {
