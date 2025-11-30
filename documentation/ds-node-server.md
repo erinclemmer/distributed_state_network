@@ -59,7 +59,6 @@ server = DSNodeServer.start(config)
 bootstrap_config = DSNodeConfig(
     node_id="bootstrap",
     port=8000,
-    aes_key_file="network.key",
     bootstrap_nodes=[]
 )
 bootstrap = DSNodeServer.start(bootstrap_config)
@@ -68,21 +67,20 @@ bootstrap = DSNodeServer.start(bootstrap_config)
 connector_config = DSNodeConfig(
     node_id="connector",
     port=8001,
-    aes_key_file="network.key",
     bootstrap_nodes=[Endpoint("127.0.0.1", 8000)]
 )
 connector = DSNodeServer.start(connector_config)
 ```
 
-### `generate_key(out_file_path: str) -> None`
-Generates a new AES key file for network encryption. All nodes in the same network must share the same AES key.
+### `generate_key() -> str`
+Generates a new hexadecimal encoded AES key for network encryption. All nodes in the same network must share the same AES key.
 
 **Parameters:**
-- `out_file_path` (`str`): Path where the key file will be saved
+- None
 
 **Example:**
 ```python
-DSNodeServer.generate_key("/path/to/network.key")
+DSNodeServer.generate_key()
 ```
 
 ### Instance Methods
@@ -145,13 +143,13 @@ All shared state is protected with appropriate locks.
 from distributed_state_network import DSNodeServer, DSNodeConfig, Endpoint
 
 # Generate shared AES key (only once)
-DSNodeServer.generate_key("shared.key")
+key = DSNodeServer.generate_key()
 
 # Start bootstrap node
 bootstrap = DSNodeServer.start(DSNodeConfig(
     node_id="bootstrap",
     port=8000,
-    aes_key_file="shared.key",
+    aes_key=key,
     bootstrap_nodes=[]
 ))
 
@@ -159,14 +157,14 @@ bootstrap = DSNodeServer.start(DSNodeConfig(
 node1 = DSNodeServer.start(DSNodeConfig(
     node_id="node1",
     port=8001,
-    aes_key_file="shared.key",
+    aes_key=key,
     bootstrap_nodes=[Endpoint("192.168.1.100", 8000)]
 ))
 
 node2 = DSNodeServer.start(DSNodeConfig(
     node_id="node2",
     port=8002,
-    aes_key_file="shared.key",
+    aes_key=key,
     bootstrap_nodes=[Endpoint("192.168.1.100", 8000)]
 ))
 

@@ -9,7 +9,6 @@ from distributed_state_network import DSNodeServer, DSNodeConfig, Endpoint
 config = DSNodeConfig(
     node_id="node1",
     port=8000,
-    aes_key_file="/path/to/shared.key",
     bootstrap_nodes=[]  # Empty for first node
 )
 
@@ -38,7 +37,6 @@ server.stop()
 config2 = DSNodeConfig(
     node_id="node2",
     port=8001,
-    aes_key_file="/path/to/shared.key",  # Same key file as network
     bootstrap_nodes=[
         Endpoint("127.0.0.1", 8000)  # Node 1's endpoint
     ]
@@ -65,7 +63,6 @@ custom_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 config = DSNodeConfig(
     node_id="node3",
     port=8003,  # Should match the bound port
-    aes_key_file="/path/to/shared.key",
     bootstrap_nodes=[Endpoint("127.0.0.1", 8000)]
 )
 
@@ -83,7 +80,6 @@ def handle_disconnect():
 config = DSNodeConfig(
     node_id="node4",
     port=8004,
-    aes_key_file="/path/to/shared.key",
     bootstrap_nodes=[Endpoint("127.0.0.1", 8000)]
 )
 
@@ -100,7 +96,6 @@ def handle_update():
 config = DSNodeConfig(
     node_id="node5",
     port=8005,
-    aes_key_file="/path/to/shared.key",
     bootstrap_nodes=[Endpoint("127.0.0.1", 8000)]
 )
 
@@ -126,7 +121,6 @@ custom_sock.bind(("0.0.0.0", 8006))
 config = DSNodeConfig(
     node_id="node6",
     port=8006,
-    aes_key_file="/path/to/shared.key",
     bootstrap_nodes=[
         Endpoint("127.0.0.1", 8000),
         Endpoint("127.0.0.1", 8001)  # Multiple bootstrap options

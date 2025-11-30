@@ -77,10 +77,6 @@ class KeyManager:
         with open(f'{self.folder}/{self.node_id}/{self.node_id}.{self.private_extension}', 'wb') as f:
             f.write(key_bytes)
 
-class CertManager(KeyManager):
-    def __init__(self, node_id: str):
-        KeyManager.__init__(self, "HTTPS", node_id, "certs", "crt", "key", generate_cert)
-
 class CredentialManager(KeyManager):
-    def __init__(self, node_id: str):
-        KeyManager.__init__(self, "ECDSA", node_id, "credentials", "pub", "key", generate_key_pair)
+    def __init__(self, folder: str, node_id: str):
+        KeyManager.__init__(self, "ECDSA", node_id, folder, "pub", "key", generate_key_pair)

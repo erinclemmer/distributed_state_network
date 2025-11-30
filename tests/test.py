@@ -14,16 +14,12 @@ from distributed_state_network import DSNodeServer, Endpoint, DSNodeConfig
 from distributed_state_network.objects.state_packet import StatePacket
 from distributed_state_network.objects.hello_packet import HelloPacket
 
-from distributed_state_network.util.key_manager import CertManager
 from distributed_state_network.util.aes import generate_aes_key
 
 current_port = 8000
 nodes = []
 
-key_file = "src/distributed_state_network/test.key"
-
-if not os.path.exists(key_file):
-    DSNodeServer.generate_key(key_file)
+aes_key = DSNodeServer.generate_key()
 
 def spawn_node(node_id: str, bootstrap_nodes: List[Dict] = []):
     global current_port
@@ -31,7 +27,7 @@ def spawn_node(node_id: str, bootstrap_nodes: List[Dict] = []):
     n = DSNodeServer.start(DSNodeConfig.from_dict({
         "node_id": node_id,
         "port": current_port,
-        "aes_key_file": key_file,
+        "aes_key": aes_key,
         "bootstrap_nodes": bootstrap_nodes
     }))
     global nodes
@@ -264,7 +260,7 @@ class TestNode(unittest.TestCase):
         config_dict = {
             "node_id": "node",
             "port": 8000,
-            "aes_key_file": "test.key",
+            "aes_key": "XXX",
             "bootstrap_nodes": [
                 {
                     "address": "127.0.0.1",
@@ -276,7 +272,7 @@ class TestNode(unittest.TestCase):
         config = DSNodeConfig.from_dict(config_dict)
         self.assertEqual(config_dict["node_id"], config.node_id)
         self.assertEqual(config_dict["port"], config.port)
-        self.assertEqual(config_dict["aes_key_file"], config.aes_key_file)
+        self.assertEqual(config_dict["aes_key"], config.aes_key)
         self.assertTrue(len(config.bootstrap_nodes) > 0)
         self.assertEqual(config_dict["bootstrap_nodes"][0]["address"], config.bootstrap_nodes[0].address)
         self.assertEqual(config_dict["bootstrap_nodes"][0]["port"], config.bootstrap_nodes[0].port)
@@ -307,30 +303,8 @@ class TestNode(unittest.TestCase):
             print(e)
 
     def test_aes(self):
-        test_key_file = 'delete_me.key'
-        DSNodeServer.generate_key(test_key_file)
-        with open(test_key_file, 'rb') as f:
-            key = f.read()
+        key = DSNodeServer.generate_key()
         self.assertEqual(64, len(key))
-        os.remove(test_key_file)
-
-    def test_write_cert(self):
-        if os.path.exists('certs'):
-            shutil.rmtree('certs')
-        cm = CertManager('test')
-        cm.write_public('test', b'TEST')
-        self.assertTrue(os.path.exists('certs/test/test.crt'))
-        shutil.rmtree('certs')
-
-    def test_read_public(self):
-        if os.path.exists('certs'):
-            shutil.rmtree('certs')
-        cm = CertManager('test')
-        try:
-            cm.read_public('test')
-        except Exception as e:
-            self.assertEqual(e.args[0], 401)
-            self.assertEqual(e.args[1], "Cannot find public ECDSA key for test")
 
     def test_authentication_reset(self):
         bootstrap = spawn_node("bootstrap")

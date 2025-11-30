@@ -8,7 +8,7 @@ from distributed_state_network.objects.config import DSNodeConfig
 from distributed_state_network.util.aes import generate_aes_key
 from distributed_state_network.util import stop_thread
 
-VERSION = "0.4.2"
+VERSION = "0.5.0"
 logging.basicConfig(level=logging.INFO)
 
 # Silence Flask and Werkzeug logging
@@ -66,7 +66,7 @@ class DSNodeServer:
         """Handle incoming HTTP request"""
         try:
             # Decrypt the data
-            if self.config.aes_key_file is not None:
+            if self.config.aes_key is not None:
                 data = self.node.decrypt_data(data)
             
             if len(data) < 1:
@@ -99,7 +99,7 @@ class DSNodeServer:
             if response_data is not None:
                 # Prepend message type to response
                 response_with_type = bytes([msg_type]) + response_data
-                if self.config.aes_key_file is not None:
+                if self.config.aes_key is not None:
                     response_with_type = self.node.encrypt_data(response_with_type)
                 return Response(response_with_type, status=200, mimetype='application/octet-stream')
             else:
@@ -132,10 +132,8 @@ class DSNodeServer:
         self.node.logger.info(f'Started DSNode on HTTP port {port}')
 
     @staticmethod
-    def generate_key(out_file_path: str):
-        key = generate_aes_key()
-        with open(out_file_path, 'w', encoding='utf-8') as f:
-            f.write(key.hex())
+    def generate_key() -> str:
+        return generate_aes_key().hex()
 
     @staticmethod 
     def start(

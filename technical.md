@@ -9,13 +9,13 @@ This is intended to be used as a middleware for another application rather than 
 from distributed_state_network import DSNodeServer, DSNodeConfig
 
 # Write a new aes key to the current directory
-DSNodeServer.generate_key("test.key")
+aes_key = DSNodeServer.generate_key()
 
 # Use the key to start a new network
 bootstrap = DSNodeServer(DSNodeConfig(
     node_id="bootstrap", # Network ID for the node
     port=8000, # Port to host the server on
-    aes_key_file="test.key" # Key file for authentication to the network
+    aes_key=aes_key # Key file for authentication to the network
 ))
 ```
 
@@ -26,10 +26,12 @@ To connect another node to we will copy the AES key file to the new machine and 
 ```python
 from distributed_state_network import DSNodeServer, DSNodeConfig
 
+KEY = "..."
+
 connector = DSNodeServer(DSNodeConfig(
     node_id="connector", # New node ID
     port=8000, # Port to host the new server on
-    aes_key_file= "test.key", # Key file that was copied from first machine
+    aes_key= KEY, # Key file that was copied from first machine
     bootstrap_nodes= [
         {
             # IP address of bootstrap node

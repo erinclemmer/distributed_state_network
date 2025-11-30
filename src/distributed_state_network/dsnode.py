@@ -49,7 +49,7 @@ class DSNode:
         self.version = version
         self.server = None  # Reference to the Flask server
         
-        self.cred_manager = CredentialManager(config.node_id)
+        self.cred_manager = CredentialManager("credentials", config.node_id)
         self.cred_manager.generate_keys()
         
         self.node_states = {
@@ -65,21 +65,14 @@ class DSNode:
         self.logger = logging.getLogger("DSN: " + config.node_id)
         self.disconnect_cb = disconnect_callback
         self.update_cb = update_callback
-        if config.aes_key_file is not None and not os.path.exists(config.aes_key_file):
-            raise Exception(f"Could not find aes key file in {config.aes_key_file}")
         
         threading.Thread(target=self.network_tick, daemon=True).start()
 
     def set_server(self, server):
-        """Set reference to the Flask server"""
         self.server = server
 
-    def get_aes_key(self):
-        if not os.path.exists(self.config.aes_key_file):
-            raise Exception("Could not find aes key file")
-        with open(self.config.aes_key_file, 'r') as f:
-            key_hex = f.read()
-            return bytes.fromhex(key_hex)
+    def get_aes_key(self) -> bytes:
+        return bytes.fromhex(self.config.aes_key)
 
     def network_tick(self):
         time.sleep(TICK_INTERVAL)
@@ -113,7 +106,7 @@ class DSNode:
         try:
             # Prepend message type to payload
             data = bytes([msg_type]) + payload
-            if self.config.aes_key_file is not None:
+            if self.config.aes_key is not None:
                 data = self.encrypt_data(data)
             
             # Determine the URL path based on message type
@@ -137,7 +130,7 @@ class DSNode:
             
             response_data = response.content
             # Decrypt the response
-            if self.config.aes_key_file is not None:
+            if self.config.aes_key is not None:
                 response_data = self.decrypt_data(response_data)
             
             if len(response_data) < 1:

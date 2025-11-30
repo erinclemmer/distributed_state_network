@@ -8,10 +8,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '../src'))
 
 from distributed_state_network import DSNodeServer, DSNodeConfig, Endpoint
 
-KEY_FILE = "network.key"
-
-if not os.path.exists(KEY_FILE):
-    DSNodeServer.generate_key("network.key")
+aes_key = DSNodeServer.generate_key()
 
 cb_test = 0
 
@@ -22,7 +19,7 @@ def start_node(node_id: str, bootstrap_port: int = None, disconnect_cb: Optional
     args = {
         "node_id": node_id,
         "port": current_port,
-        "aes_key_file": KEY_FILE
+        "aes_key": aes_key
     }
     current_port += 1
     if bootstrap_port is not None:
