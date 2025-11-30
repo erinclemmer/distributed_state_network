@@ -75,8 +75,9 @@ class DSNode:
         self.server = server
 
     def get_aes_key(self):
-        with open(self.config.aes_key_file, 'rb') as f:
-            return f.read()
+        with open(self.config.aes_key_file, 'r') as f:
+            key_hex = f.read()
+            return bytes.fromhex(key_hex)
 
     def network_tick(self):
         time.sleep(TICK_INTERVAL)
