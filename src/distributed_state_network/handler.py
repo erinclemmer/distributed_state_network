@@ -8,7 +8,7 @@ from distributed_state_network.objects.config import DSNodeConfig
 from distributed_state_network.util.aes import generate_aes_key
 from distributed_state_network.util import stop_thread
 
-VERSION = "0.4.1"
+VERSION = "0.4.2"
 logging.basicConfig(level=logging.INFO)
 
 # Silence Flask and Werkzeug logging
@@ -66,14 +66,15 @@ class DSNodeServer:
         """Handle incoming HTTP request"""
         try:
             # Decrypt the data
-            decrypted = self.node.decrypt_data(data)
+            if self.config.aes_key_file is not None:
+                data = self.node.decrypt_data(data)
             
-            if len(decrypted) < 1:
+            if len(data) < 1:
                 return Response(status=400)
             
             # First byte should be message type (for verification)
-            received_msg_type = decrypted[0]
-            body = decrypted[1:]
+            received_msg_type = data[0]
+            body = data[1:]
             
             if received_msg_type != msg_type:
                 self.node.logger.error(f"Message type mismatch: expected {msg_type}, got {received_msg_type}")
@@ -98,8 +99,9 @@ class DSNodeServer:
             if response_data is not None:
                 # Prepend message type to response
                 response_with_type = bytes([msg_type]) + response_data
-                encrypted_response = self.node.encrypt_data(response_with_type)
-                return Response(encrypted_response, status=200, mimetype='application/octet-stream')
+                if self.config.aes_key_file is not None:
+                    response_with_type = self.node.encrypt_data(response_with_type)
+                return Response(response_with_type, status=200, mimetype='application/octet-stream')
             else:
                 return Response(status=204)  # No content
                 
@@ -132,8 +134,8 @@ class DSNodeServer:
     @staticmethod
     def generate_key(out_file_path: str):
         key = generate_aes_key()
-        with open(out_file_path, 'wb') as f:
-            f.write(key)
+        with open(out_file_path, 'w', encoding='utf-8') as f:
+            f.write(key.hex())
 
     @staticmethod 
     def start(

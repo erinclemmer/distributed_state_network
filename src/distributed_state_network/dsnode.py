@@ -65,7 +65,7 @@ class DSNode:
         self.logger = logging.getLogger("DSN: " + config.node_id)
         self.disconnect_cb = disconnect_callback
         self.update_cb = update_callback
-        if not os.path.exists(config.aes_key_file):
+        if config.aes_key_file is not None and not os.path.exists(config.aes_key_file):
             raise Exception(f"Could not find aes key file in {config.aes_key_file}")
         
         threading.Thread(target=self.network_tick, daemon=True).start()
@@ -75,6 +75,8 @@ class DSNode:
         self.server = server
 
     def get_aes_key(self):
+        if not os.path.exists(self.config.aes_key_file):
+            raise Exception("Could not find aes key file")
         with open(self.config.aes_key_file, 'r') as f:
             key_hex = f.read()
             return bytes.fromhex(key_hex)
@@ -110,8 +112,9 @@ class DSNode:
         """Send HTTP request and wait for response"""
         try:
             # Prepend message type to payload
-            data_with_type = bytes([msg_type]) + payload
-            encrypted_data = self.encrypt_data(data_with_type)
+            data = bytes([msg_type]) + payload
+            if self.config.aes_key_file is not None:
+                data = self.encrypt_data(data)
             
             # Determine the URL path based on message type
             path = MSG_TYPE_TO_PATH.get(msg_type, '/unknown')
@@ -120,7 +123,7 @@ class DSNode:
             # Send HTTP POST request
             response = requests.post(
                 url,
-                data=encrypted_data,
+                data=data,
                 headers={'Content-Type': 'application/octet-stream'},
                 timeout=HTTP_TIMEOUT
             )
@@ -132,19 +135,21 @@ class DSNode:
             elif response.status_code != 200:
                 raise Exception(f"HTTP error: {response.status_code}")
             
+            response_data = response.content
             # Decrypt the response
-            decrypted = self.decrypt_data(response.content)
+            if self.config.aes_key_file is not None:
+                response_data = self.decrypt_data(response_data)
             
-            if len(decrypted) < 1:
+            if len(response_data) < 1:
                 raise Exception("Empty response")
             
             # First byte is message type
-            response_msg_type = decrypted[0]
+            response_msg_type = response_data[0]
             if response_msg_type != msg_type:
                 raise Exception(f"Response message type mismatch: expected {msg_type}, got {response_msg_type}")
             
             # Return the body (everything after the message type byte)
-            return decrypted[1:]
+            return response_data[1:]
             
         except requests.exceptions.Timeout:
             if retries < 2:

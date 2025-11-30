@@ -6,5 +6,5 @@ if len(sys.argv) < 2:
 
 location = sys.argv[1]
 
-with open(location, 'wb') as f:
-    f.write(generate_aes_key())
+with open(location, 'w') as f:
+    f.write(generate_aes_key().hex())

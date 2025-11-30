@@ -7,7 +7,7 @@ import unittest
 import requests
 from typing import List, Dict
 
-sys.path.append(os.path.join(os.path.dirname(__file__), './src'))
+sys.path.append(os.path.join(os.path.dirname(__file__), '../src'))
 
 from distributed_state_network import DSNodeServer, Endpoint, DSNodeConfig
 
@@ -311,7 +311,7 @@ class TestNode(unittest.TestCase):
         DSNodeServer.generate_key(test_key_file)
         with open(test_key_file, 'rb') as f:
             key = f.read()
-        self.assertEqual(32, len(key))
+        self.assertEqual(64, len(key))
         os.remove(test_key_file)
 
     def test_write_cert(self):

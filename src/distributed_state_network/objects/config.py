@@ -7,7 +7,7 @@ from distributed_state_network.objects.endpoint import Endpoint
 class DSNodeConfig:
     node_id: str
     port: int
-    aes_key_file: str
+    aes_key_file: str | None
     bootstrap_nodes: List[Endpoint]
 
     @staticmethod
@@ -15,6 +15,6 @@ class DSNodeConfig:
         return DSNodeConfig(
             data["node_id"], 
             data["port"], 
-            data["aes_key_file"], 
+            data["aes_key_file"] if "aes_key_file" in data else None, 
             [Endpoint.from_json(e) for e in data["bootstrap_nodes"]]
         )

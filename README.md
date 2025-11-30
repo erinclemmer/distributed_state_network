@@ -28,14 +28,10 @@ The simplest DSN network is a single node:
 ```python
 from distributed_state_network import DSNodeServer, DSNodeConfig
 
-# Generate a network key (do this once for your entire network)
-DSNodeServer.generate_key("network.key")
-
 # Start a node
 node = DSNodeServer.start(DSNodeConfig(
     node_id="my_first_node",
     port=8000,
-    aes_key_file="network.key",
     bootstrap_nodes=[]  # Empty for the first node
 ))
 
@@ -63,7 +59,6 @@ Create a network of temperature sensors that share readings:
 sensor_node = DSNodeServer.start(DSNodeConfig(
     node_id=f"sensor_{location}",
     port=8000,
-    aes_key_file="network.key",
     bootstrap_nodes=[{"address": "coordinator.local", "port": 8000}]
 ))
 
