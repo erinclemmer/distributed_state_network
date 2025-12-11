@@ -189,7 +189,7 @@ class DSNode:
             
             if key not in self.node_states:
                 self.send_hello(self.address_book[key])
-            
+                
             node_state = self.send_update(key)
             self.handle_update(node_state)
 
@@ -306,7 +306,6 @@ class DSNode:
         
         if pkt.node_id not in self.node_states:
             self.node_states[pkt.node_id] = pkt
-            return
 
         if get_dict_hash(self.node_states[pkt.node_id].state_data) != get_dict_hash(pkt.state_data):
             self.node_states[pkt.node_id] = pkt
