@@ -96,6 +96,7 @@ class DSNode:
                     return
                 self.send_ping(node_id)
             except Exception:
+                self.logger.error(f"PING Failure for {node_id}")
                 if node_id in self.node_states:  # double check if something has changed since the ping request started
                     remove(node_id)
                     if self.disconnect_cb is not None:
@@ -282,6 +283,7 @@ class DSNode:
 
     def send_ping(self, node_id: str):     
         try:
+            self.logger.info(f"PING => {node_id}")
             self.send_request_to_node(node_id, MSG_PING, b' ')
         except Exception as e:
             raise Exception(f'PING => {node_id}: {e}')
