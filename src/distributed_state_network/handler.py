@@ -8,7 +8,7 @@ from distributed_state_network.objects.config import DSNodeConfig
 from distributed_state_network.util.aes import generate_aes_key
 from distributed_state_network.util import stop_thread
 
-VERSION = "0.5.3"
+VERSION = "0.5.4"
 logging.basicConfig(level=logging.INFO)
 
 # Silence Flask and Werkzeug logging

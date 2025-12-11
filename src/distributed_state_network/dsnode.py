@@ -236,16 +236,14 @@ class DSNode:
             # Update our own connection in the address book with the detected IP
             self.address_book[self.config.node_id] = Endpoint(pkt.detected_address, self.config.port)
         
-        # Store the peer's connection info
-        if pkt.node_id not in self.address_book:
-            self.address_book[pkt.node_id] = pkt.connection
+        self.address_book[pkt.node_id] = con
 
         if pkt.node_id not in self.node_states:
             self.node_states[pkt.node_id] = StatePacket(pkt.node_id, 0, b'', { })
 
         return pkt.node_id
 
-    def handle_hello(self, data: bytes, detected_address: str = None) -> bytes | None:
+    def handle_hello(self, data: bytes, detected_address: str) -> bytes:
         pkt = HelloPacket.from_bytes(data)
         self.logger.info(f"Received HELLO from {pkt.node_id}")
         if pkt.version != self.version:
@@ -255,8 +253,7 @@ class DSNode:
 
         self.cred_manager.ensure_public(pkt.node_id, pkt.ecdsa_public_key)
         
-        if pkt.node_id not in self.address_book:
-            self.address_book[pkt.node_id] = pkt.connection
+        self.address_book[pkt.node_id] = Endpoint(detected_address, pkt.connection.port)
 
         if pkt.node_id not in self.node_states:
             self.node_states[pkt.node_id] = StatePacket(pkt.node_id, 0, b'', { })
@@ -324,7 +321,6 @@ class DSNode:
 
     def bootstrap(self, con: Endpoint):
         bootstrap_id = self.send_hello(con)
-        self.address_book[bootstrap_id] = con
         content = self.send_update(bootstrap_id)
         self.handle_update(content)
         self.request_peers(bootstrap_id)
