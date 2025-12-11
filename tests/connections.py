@@ -19,7 +19,8 @@ def start_node(node_id: str, bootstrap_port: int = None, disconnect_cb: Optional
     args = {
         "node_id": node_id,
         "port": current_port,
-        "aes_key": aes_key
+        "aes_key": aes_key,
+        "credential_dir": "credentials"
     }
     current_port += 1
     if bootstrap_port is not None:

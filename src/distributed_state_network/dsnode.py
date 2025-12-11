@@ -212,7 +212,9 @@ class DSNode:
     def send_hello(self, con: Endpoint):
         self.logger.info(f"HELLO => {con.to_string()}")
 
-        payload = self.my_hello_packet().to_bytes()
+        pkt = self.my_hello_packet()
+        pkt.detected_address = con.address
+        payload = pkt.to_bytes()
         content = self.send_http_request(con, MSG_HELLO, payload)
         
         # Get the response packet
@@ -255,8 +257,6 @@ class DSNode:
         
         if pkt.node_id not in self.address_book:
             self.address_book[pkt.node_id] = pkt.connection
-        else:
-            return None
 
         if pkt.node_id not in self.node_states:
             self.node_states[pkt.node_id] = StatePacket(pkt.node_id, 0, b'', { })
