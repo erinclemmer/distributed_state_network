@@ -203,6 +203,8 @@ class DSNode:
 
         peers = { }
         for key in self.address_book.keys():
+            if key == self.config.node_id:
+                continue
             peers[key] = self.address_book[key]
         
         pkt = PeersPacket(self.config.node_id, None, peers)
