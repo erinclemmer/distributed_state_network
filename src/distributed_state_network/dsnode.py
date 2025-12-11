@@ -216,7 +216,6 @@ class DSNode:
         self.logger.info(f"HELLO => {con.to_string()}")
 
         pkt = self.my_hello_packet()
-        pkt.detected_address = con.address
         payload = pkt.to_bytes()
         content = self.send_http_request(con, MSG_HELLO, payload)
         
