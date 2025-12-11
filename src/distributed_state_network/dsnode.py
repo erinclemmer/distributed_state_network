@@ -56,10 +56,8 @@ class DSNode:
             self.config.node_id: StatePacket.create(self.config.node_id, time.time(), self.cred_manager.my_private(), { })
         }
 
-        # Determine initial IP - use 127.0.0.1 for localhost, will be updated when connecting to remote nodes
-        initial_ip = "127.0.0.1"
         self.address_book = {
-            self.config.node_id: Endpoint(initial_ip, config.port)
+            self.config.node_id: Endpoint(self.config.network_ip, config.port)
         }
         
         self.logger = logging.getLogger("DSN: " + config.node_id)
@@ -282,7 +280,6 @@ class DSNode:
 
     def send_ping(self, node_id: str):     
         try:
-            self.logger.info(f"PING => {node_id}")
             self.send_request_to_node(node_id, MSG_PING, b' ')
         except Exception as e:
             raise Exception(f'PING => {node_id}: {e}')

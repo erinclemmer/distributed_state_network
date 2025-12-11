@@ -20,6 +20,7 @@ def start_node(node_id: str, bootstrap_port: int = None, disconnect_cb: Optional
         "node_id": node_id,
         "port": current_port,
         "aes_key": aes_key,
+        "network_ip": "127.0.0.1",
         "credential_dir": "credentials"
     }
     current_port += 1
