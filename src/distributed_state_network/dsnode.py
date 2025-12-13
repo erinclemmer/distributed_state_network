@@ -75,7 +75,7 @@ class DSNode:
     def write_address_book(self, node_id: str, conn: Endpoint):
         if conn.address == "127.0.0.1":
             return
-        self.logger.debug(f"ADDRESS SET: {node_id} -> {conn.address}:{conn.port}")
+        self.logger.info(f"Address set: {node_id} -> {conn.address}:{conn.port}")
         self.address_book[node_id] = conn
 
     def network_tick(self):
