@@ -282,6 +282,8 @@ class DSNode:
 
     def send_ping(self, node_id: str):     
         try:
+            conn = self.connection_from_node(node_id)
+            self.logger.info(f"PING => {node_id} ({conn.address}:{conn.port})")
             self.send_request_to_node(node_id, MSG_PING, b' ')
         except Exception as e:
             raise Exception(f'PING => {node_id}: {e}')
