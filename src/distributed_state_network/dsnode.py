@@ -72,6 +72,12 @@ class DSNode:
     def get_aes_key(self) -> bytes:
         return bytes.fromhex(self.config.aes_key)
 
+    def write_address_book(self, node_id: str, conn: Endpoint):
+        if conn.address == "127.0.0.1":
+            return
+        self.logger.debug(f"ADDRESS SET: {node_id} -> {conn.address}:{conn.port}")
+        self.address_book[node_id] = conn
+
     def network_tick(self):
         time.sleep(TICK_INTERVAL)
         if self.shutting_down:
@@ -184,7 +190,7 @@ class DSNode:
             if key == self.config.node_id:
                 continue
             
-            self.address_book[key] = pkt.connections[key]
+            self.write_address_book(key, pkt.connections[key])
             
             if key not in self.node_states:
                 self.send_hello(self.address_book[key])
@@ -234,9 +240,9 @@ class DSNode:
         if pkt.detected_address:
             self.logger.info(f"Server detected our IP as: {pkt.detected_address}")
             # Update our own connection in the address book with the detected IP
-            self.address_book[self.config.node_id] = Endpoint(pkt.detected_address, self.config.port)
+            self.write_address_book(self.config.node_id, pkt.detected_address, self.config.port)
         
-        self.address_book[pkt.node_id] = con
+        self.write_address_book(pkt.node_id, con)
 
         if pkt.node_id not in self.node_states:
             self.node_states[pkt.node_id] = StatePacket(pkt.node_id, 0, b'', { })
@@ -252,8 +258,7 @@ class DSNode:
             raise Exception(505)  # Version not supported
 
         self.cred_manager.ensure_public(pkt.node_id, pkt.ecdsa_public_key)
-        
-        self.address_book[pkt.node_id] = Endpoint(detected_address, pkt.connection.port)
+        self.write_address_book(pkt.node_id, Endpoint(detected_address, pkt.connection.port))
 
         if pkt.node_id not in self.node_states:
             self.node_states[pkt.node_id] = StatePacket(pkt.node_id, 0, b'', { })
