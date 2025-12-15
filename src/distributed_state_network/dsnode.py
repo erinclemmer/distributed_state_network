@@ -90,8 +90,10 @@ class DSNode:
         def remove(node_id: str):
             if node_id in self.node_states:
                 del self.node_states[node_id]
+            if node_id in self.address_book:    
                 del self.address_book[node_id]
-                self.logger.info(f"PING failed for {node_id}, disconnecting...")
+            self.logger.info(f"PING failed for {node_id}, disconnecting...")
+        
         for node_id in self.node_states.copy().keys():
             if node_id not in self.node_states or node_id == self.config.node_id:
                 continue
