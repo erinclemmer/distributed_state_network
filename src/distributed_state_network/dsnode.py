@@ -73,8 +73,8 @@ class DSNode:
         return bytes.fromhex(self.config.aes_key)
 
     def write_address_book(self, node_id: str, conn: Endpoint):
-        if conn.address == "127.0.0.1":
-            return
+        if conn.address == "127.0.0.1" and conn.port == self.config.port:
+            raise Exception("Trying to write address book for self")
         self.logger.info(f"Address set: {node_id} -> {conn.address}:{conn.port}")
         self.address_book[node_id] = conn
 
@@ -247,9 +247,12 @@ class DSNode:
         self.write_address_book(pkt.node_id, con)
 
         if pkt.node_id not in self.node_states:
-            self.node_states[pkt.node_id] = StatePacket(pkt.node_id, 0, b'', { })
+            self.init_state(pkt.node_id)
 
         return pkt.node_id
+
+    def init_state(self, node_id: str):
+        self.node_states[node_id] = StatePacket(node_id, 0, b'', { })
 
     def handle_hello(self, data: bytes, detected_address: str) -> bytes:
         pkt = HelloPacket.from_bytes(data)
@@ -263,7 +266,7 @@ class DSNode:
         self.write_address_book(pkt.node_id, Endpoint(detected_address, pkt.connection.port))
 
         if pkt.node_id not in self.node_states:
-            self.node_states[pkt.node_id] = StatePacket(pkt.node_id, 0, b'', { })
+            self.init_state(pkt.node_id)
 
         # Create response with detected address
         response_pkt = self.my_hello_packet()
@@ -299,22 +302,7 @@ class DSNode:
         pkt = StatePacket.from_bytes(data)
         self.logger.info(f"Received UPDATE from {pkt.node_id}")
         
-        # ignore if we accidentally sent an update to ourselves
-        if pkt.node_id == self.config.node_id:
-            raise Exception(406, "Origin and destination are the same")  # Not acceptable
-        
-        # don't use packets older than last update
-        if pkt.node_id in self.node_states and self.node_states[pkt.node_id].last_update > pkt.last_update:
-            raise Exception(406, "Update is stale")  # Not acceptable
-        
-        if not pkt.verify_signature(self.cred_manager.read_public(pkt.node_id)):
-            raise Exception(401, "Could not verify ECDSA signature")  # Not authorized
-        
-        if pkt.node_id not in self.node_states:
-            self.node_states[pkt.node_id] = pkt
-
-        if get_dict_hash(self.node_states[pkt.node_id].state_data) != get_dict_hash(pkt.state_data):
-            self.node_states[pkt.node_id] = pkt
+        self.update_state(pkt)
 
         if self.update_cb is not None:
             try:
@@ -327,6 +315,25 @@ class DSNode:
 
     def my_state(self):
         return self.node_states[self.config.node_id]
+    
+    def update_state(self, pkt: StatePacket):
+        # ignore if we accidentally sent an update to ourselves
+        if pkt.node_id == self.config.node_id:
+            raise Exception(406, "Origin and destination are the same")  # Not acceptable
+
+        if pkt.node_id in self.address_book and not pkt.verify_signature(self.cred_manager.read_public(pkt.node_id)):
+            raise Exception(401, "Could not verify ECDSA signature")  # Not authorized
+
+        if pkt.node_id in self.node_states:
+            current_state = self.node_states[pkt.node_id]
+
+            if current_state.last_update > pkt.last_update:
+                raise Exception(406, "Update is stale") 
+
+            if len(pkt.state_data.keys()) > 0 and get_dict_hash(self.node_states[pkt.node_id].state_data) == get_dict_hash(pkt.state_data):
+                raise Exception(406, "Received duplicate packet")
+
+        self.node_states[pkt.node_id] = pkt
 
     def bootstrap(self, con: Endpoint):
         bootstrap_id = self.send_hello(con)
