@@ -25,7 +25,8 @@ class DSNodeServer:
         self, 
         config: DSNodeConfig,
         disconnect_callback: Optional[Callable] = None,
-        update_callback: Optional[Callable] = None
+        update_callback: Optional[Callable] = None,
+        receive_callback: Optional[Callable] = None
     ):
         self.config = config
         self.running = False
@@ -35,7 +36,7 @@ class DSNodeServer:
         self.app.logger.setLevel(logging.ERROR)  # Reduce Flask's logging noise
         
         # Create DSNode
-        self.node = DSNode(config, VERSION, disconnect_callback, update_callback)
+        self.node = DSNode(config, VERSION, disconnect_callback, update_callback, receive_callback)
         
         # Set up Flask routes
         self._setup_routes()
