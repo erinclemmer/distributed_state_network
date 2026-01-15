@@ -306,6 +306,161 @@ class TestNode(unittest.TestCase):
         key = DSNodeServer.generate_key()
         self.assertEqual(64, len(key))
 
+    def test_peers_wrapper(self):
+        """Test DSNodeServer.peers() wrapper method"""
+        bootstrap = spawn_node("bootstrap")
+        # Single node should have itself in peers
+        peers = bootstrap.peers()
+        self.assertIsInstance(peers, list)
+        self.assertIn("bootstrap", peers)
+        
+        # After connection, both nodes should see each other
+        connector = spawn_node("connector", [bootstrap.node.my_con().to_json()])
+        
+        bootstrap_peers = bootstrap.peers()
+        connector_peers = connector.peers()
+        
+        self.assertIn("bootstrap", bootstrap_peers)
+        self.assertIn("connector", bootstrap_peers)
+        self.assertIn("bootstrap", connector_peers)
+        self.assertIn("connector", connector_peers)
+
+    def test_read_data_wrapper(self):
+        """Test DSNodeServer.read_data() wrapper method"""
+        bootstrap = spawn_node("bootstrap")
+        connector = spawn_node("connector", [bootstrap.node.my_con().to_json()])
+        
+        # Reading non-existent key should return None
+        result = bootstrap.read_data("connector", "nonexistent_key")
+        self.assertIsNone(result)
+        
+        # After updating data, should be able to read it
+        connector.node.update_data("test_key", "test_value")
+        time.sleep(0.5)  # Wait for propagation
+        
+        result = bootstrap.read_data("connector", "test_key")
+        self.assertEqual("test_value", result)
+        
+        # Can also read own data
+        bootstrap.node.update_data("own_key", "own_value")
+        result = bootstrap.read_data("bootstrap", "own_key")
+        self.assertEqual("own_value", result)
+
+    def test_update_data_wrapper(self):
+        """Test DSNodeServer.update_data() wrapper method"""
+        bootstrap = spawn_node("bootstrap")
+        connector = spawn_node("connector", [bootstrap.node.my_con().to_json()])
+        
+        # Update data via wrapper
+        bootstrap.update_data("wrapper_key", "wrapper_value")
+        time.sleep(0.5)  # Wait for propagation
+        
+        # Verify data is readable from other node
+        result = connector.read_data("bootstrap", "wrapper_key")
+        self.assertEqual("wrapper_value", result)
+        
+        # Verify data is readable locally
+        result = bootstrap.read_data("bootstrap", "wrapper_key")
+        self.assertEqual("wrapper_value", result)
+        
+        # Test updating existing key
+        bootstrap.update_data("wrapper_key", "updated_value")
+        time.sleep(0.5)
+        
+        result = connector.read_data("bootstrap", "wrapper_key")
+        self.assertEqual("updated_value", result)
+
+    def test_is_shut_down_wrapper(self):
+        """Test DSNodeServer.is_shut_down() wrapper method"""
+        node = spawn_node("shutdown_test")
+        
+        # Node should not be shut down initially
+        self.assertFalse(node.is_shut_down())
+        
+        # After stopping, node should be shut down
+        node.stop()
+        self.assertTrue(node.is_shut_down())
+        
+        # Remove from global nodes list since we manually stopped it
+        global nodes
+        nodes.remove(node)
+
+    def test_node_id_wrapper(self):
+        """Test DSNodeServer.node_id() wrapper method"""
+        node = spawn_node("test_node_id")
+        
+        # node_id() should return the configured node_id
+        self.assertEqual("test_node_id", node.node_id())
+        
+        # Test with different node names
+        node2 = spawn_node("another_node")
+        self.assertEqual("another_node", node2.node_id())
+        
+        node3 = spawn_node("node-with-dashes")
+        self.assertEqual("node-with-dashes", node3.node_id())
+
+    def test_multiple_data_updates(self):
+        """Test multiple data updates via wrapper methods"""
+        bootstrap = spawn_node("bootstrap")
+        connector = spawn_node("connector", [bootstrap.node.my_con().to_json()])
+        
+        # Update multiple keys
+        bootstrap.update_data("key1", "value1")
+        bootstrap.update_data("key2", "value2")
+        bootstrap.update_data("key3", "value3")
+        time.sleep(0.5)
+        
+        # Verify all keys are readable
+        self.assertEqual("value1", connector.read_data("bootstrap", "key1"))
+        self.assertEqual("value2", connector.read_data("bootstrap", "key2"))
+        self.assertEqual("value3", connector.read_data("bootstrap", "key3"))
+
+    def test_peers_after_disconnect(self):
+        """Test peers() wrapper after a node disconnects"""
+        bootstrap = spawn_node("bootstrap")
+        connector = spawn_node("connector", [bootstrap.node.my_con().to_json()])
+        
+        # Both should see each other
+        self.assertIn("connector", bootstrap.peers())
+        
+        # Stop connector
+        connector.stop()
+        global nodes
+        nodes.remove(connector)
+        
+        # Wait for ping timeout
+        time.sleep(10)
+        
+        # Bootstrap should no longer see connector
+        self.assertNotIn("connector", bootstrap.peers())
+        # But should still see itself
+        self.assertIn("bootstrap", bootstrap.peers())
+
+    def test_wrapper_methods_consistency(self):
+        """Test that wrapper methods are consistent with direct node access"""
+        bootstrap = spawn_node("bootstrap")
+        connector = spawn_node("connector", [bootstrap.node.my_con().to_json()])
+        
+        # peers() should match node.peers()
+        self.assertEqual(bootstrap.peers(), bootstrap.node.peers())
+        self.assertEqual(connector.peers(), connector.node.peers())
+        
+        # node_id() should match config.node_id
+        self.assertEqual(bootstrap.node_id(), bootstrap.config.node_id)
+        self.assertEqual(connector.node_id(), connector.config.node_id)
+        
+        # is_shut_down() should match node.shutting_down
+        self.assertEqual(bootstrap.is_shut_down(), bootstrap.node.shutting_down)
+        
+        # Update data and verify read_data consistency
+        connector.update_data("test", "value")
+        time.sleep(0.5)
+        
+        self.assertEqual(
+            bootstrap.read_data("connector", "test"),
+            bootstrap.node.read_data("connector", "test")
+        )
+
     def test_authentication_reset(self):
         bootstrap = spawn_node("bootstrap")
         connector = spawn_node("connector", [bootstrap.node.my_con().to_json()])

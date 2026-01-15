@@ -1,7 +1,7 @@
 import sys
 import threading
 import logging
-from typing import Callable, Optional
+from typing import Callable, List, Optional
 from flask import Flask, request, Response
 from distributed_state_network.dsnode import DSNode
 from distributed_state_network.objects.config import DSNodeConfig
@@ -164,7 +164,7 @@ class DSNodeServer:
         return self.node.update_data(key, val)
 
     def send_to_node(self, node_id: str, data: bytes):
-        return self.send_to_node(node_id, data)
+        return self.node.send_to_node(node_id, data)
 
     def is_shut_down(self) -> bool:
         return self.node.shutting_down
