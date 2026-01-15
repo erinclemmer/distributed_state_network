@@ -405,9 +405,10 @@ class DSNode:
         if not pkt.verify_signature(self.cred_manager.read_public(pkt.node_id)):
             raise Exception(401, "Could not verify ECDSA signature of data packet")
         
-        try:
-            self.receive_cb(data)
-        except Exception as e:
-            traceback.print_exc(e)
+        if self.receive_cb is not None:
+            try:
+                self.receive_cb(data)
+            except Exception as e:
+                traceback.print_exc(e)
 
         return b'OK'
