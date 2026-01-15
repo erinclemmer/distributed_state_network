@@ -3,12 +3,14 @@ import time
 import logging
 import threading
 import requests
+import tracing
 from typing import Dict, List, Optional, Callable
 
 from distributed_state_network.objects.endpoint import Endpoint
 from distributed_state_network.objects.hello_packet import HelloPacket
 from distributed_state_network.objects.peers_packet import PeersPacket
 from distributed_state_network.objects.state_packet import StatePacket
+from distributed_state_network.objects.data_packet import DataPacket
 from distributed_state_network.objects.config import DSNodeConfig
 
 from distributed_state_network.util import get_dict_hash
@@ -23,16 +25,19 @@ MSG_HELLO = 1
 MSG_PEERS = 2
 MSG_UPDATE = 3
 MSG_PING = 4
+MSG_DATA = 5
 
 # Map message types to endpoint paths
 MSG_TYPE_TO_PATH = {
     MSG_HELLO: '/hello',
     MSG_PEERS: '/peers',
     MSG_UPDATE: '/update',
-    MSG_PING: '/ping'
+    MSG_PING: '/ping',
+    MSG_DATA: '/data'
 }
 
 class DSNode:
+    version: str
     config: DSNodeConfig
     address_book: Dict[str, Endpoint]
     node_states: Dict[str, StatePacket]
@@ -43,11 +48,11 @@ class DSNode:
             config: DSNodeConfig,
             version: str,
             disconnect_callback: Optional[Callable] = None,
-            update_callback: Optional[Callable] = None
+            update_callback: Optional[Callable] = None,
+            receive_callback: Optional[Callable] = None
         ):
         self.config = config
         self.version = version
-        self.server = None  # Reference to the Flask server
         
         self.cred_manager = CredentialManager(config.credential_dir, config.node_id)
         self.cred_manager.generate_keys()
@@ -63,11 +68,9 @@ class DSNode:
         self.logger = logging.getLogger("DSN: " + config.node_id)
         self.disconnect_cb = disconnect_callback
         self.update_cb = update_callback
+        self.receive_cb = receive_callback
         
         threading.Thread(target=self.network_tick, daemon=True).start()
-
-    def set_server(self, server):
-        self.server = server
 
     def get_aes_key(self) -> bytes:
         return bytes.fromhex(self.config.aes_key)
@@ -366,3 +369,30 @@ class DSNode:
 
     def peers(self) -> List[str]:
         return list(self.node_states.keys())
+
+    def send_to_node(self, node_id: str, data: bytes) -> str:
+        pkt = DataPacket.create(self.config.node_id, self.cred_manager.my_private(), data)
+        response = self.send_request_to_node(node_id, MSG_DATA, pkt.to_bytes())
+        try:
+            return response.decode('utf-8')
+        except Exception:
+            return ''
+    
+    def receive_data(self, data: bytes):
+        pkt = DataPacket.from_bytes(data)
+        self.logger.info(f"Received DATA from {pkt.node_id} ({len(pkt.data)} bytes)")
+        
+        # Ensure sender is known
+        if pkt.node_id not in self.address_book:
+            raise Exception(401, f"Could not find {pkt.node_id} in address book")
+        
+        # Verify signature using stored public key
+        if not pkt.verify_signature(self.cred_manager.read_public(pkt.node_id)):
+            raise Exception(401, "Could not verify ECDSA signature of data packet")
+        
+        try:
+            self.receive_cb(data)
+        except Exception as e:
+            traceback.print_exc(e)
+
+        return b'OK'

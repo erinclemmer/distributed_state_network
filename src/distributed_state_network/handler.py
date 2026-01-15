@@ -36,7 +36,6 @@ class DSNodeServer:
         
         # Create DSNode
         self.node = DSNode(config, VERSION, disconnect_callback, update_callback)
-        self.node.set_server(self)  # Give node reference to server for making HTTP requests
         
         # Set up Flask routes
         self._setup_routes()
@@ -154,3 +153,13 @@ class DSNodeServer:
                     print(e)
 
         return n
+
+    def peers(self) -> List[str]:
+        return self.node.peers()
+    
+    def read_data(self, node_id: str, key: str) -> Optional[str]:
+        return self.node.read_data(node_id, key)
+    
+    def update_data(self, key: str, val: str):
+        return self.node.update_data(key, val)
+    
