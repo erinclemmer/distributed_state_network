@@ -162,4 +162,12 @@ class DSNodeServer:
     
     def update_data(self, key: str, val: str):
         return self.node.update_data(key, val)
+
+    def send_to_node(self, node_id: str, data: bytes):
+        return self.send_to_node(node_id, data)
+
+    def is_shut_down(self) -> bool:
+        return self.node.shutting_down
     
+    def node_id(self) -> str:
+        return self.config.node_id
