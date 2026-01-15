@@ -231,12 +231,7 @@ class TestNode(unittest.TestCase):
         bootstrap.node.handle_update(state.to_bytes())
 
         state = StatePacket.create("connector", time_before, cn_prv_key, { "a": "2" })
-        try: 
-            bootstrap.node.handle_update(state.to_bytes())
-            self.fail("Node should only accept update packets that are newer than the version we have")
-        except Exception as e:
-            print(e)
-            self.assertEqual(e.args[0], 406)
+        self.assertFalse(bootstrap.node.handle_update(state.to_bytes()))
     
     def test_bad_hello(self):
         bootstrap = spawn_node("bootstrap")

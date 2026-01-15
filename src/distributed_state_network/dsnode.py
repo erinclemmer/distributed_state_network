@@ -1,5 +1,6 @@
 import os
 import time
+import random
 import logging
 import threading
 import requests
@@ -87,7 +88,17 @@ class DSNode:
             self.logger.info("Shutting down node")
             return
         self.test_connections()
+        self.gossip()
         threading.Thread(target=self.network_tick, daemon=True).start()
+
+    def gossip(self):
+        if len(self.address_book.keys()) == 0:
+            return
+        node_id = random.choice(list(self.address_book.keys()))
+        if node_id == self.config.node_id:
+            return
+        
+        self.send_update(node_id)
 
     def test_connections(self):
         def remove(node_id: str):
@@ -305,7 +316,8 @@ class DSNode:
         pkt = StatePacket.from_bytes(data)
         self.logger.info(f"Received UPDATE from {pkt.node_id}")
         
-        self.update_state(pkt)
+        if not self.update_state(pkt):
+            return b''
 
         if self.update_cb is not None:
             try:
@@ -319,7 +331,7 @@ class DSNode:
     def my_state(self):
         return self.node_states[self.config.node_id]
     
-    def update_state(self, pkt: StatePacket):
+    def update_state(self, pkt: StatePacket) -> bool:
         # ignore if we accidentally sent an update to ourselves
         if pkt.node_id == self.config.node_id:
             raise Exception(406, "Origin and destination are the same")  # Not acceptable
@@ -330,13 +342,16 @@ class DSNode:
         if pkt.node_id in self.node_states:
             current_state = self.node_states[pkt.node_id]
 
+            # Check if stale
             if current_state.last_update > pkt.last_update:
-                raise Exception(406, "Update is stale") 
+                return False
 
+            # Check if duplicate packet
             if len(pkt.state_data.keys()) > 0 and get_dict_hash(self.node_states[pkt.node_id].state_data) == get_dict_hash(pkt.state_data):
-                raise Exception(406, "Received duplicate packet")
+                return False
 
         self.node_states[pkt.node_id] = pkt
+        return True
 
     def bootstrap(self, con: Endpoint):
         bootstrap_id = self.send_hello(con)
