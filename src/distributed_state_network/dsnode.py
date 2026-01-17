@@ -406,7 +406,7 @@ class DSNode:
         
         if self.receive_cb is not None:
             try:
-                self.receive_cb(data)
+                self.receive_cb(pkt.data)
             except Exception as e:
                 print(e)
 

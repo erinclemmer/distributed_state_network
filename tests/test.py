@@ -499,11 +499,15 @@ class TestNode(unittest.TestCase):
                 print(f"Endpoint {endpoint} test failed: {e}")
 
     def test_send_to_node_success(self):
+        payload = b"Hello, world!"
+        def recv_fn(data: bytes):
+            self.assertEqual(data, payload)
         bootstrap = spawn_node("bootstrap")
+        bootstrap.set_receive_cb(recv_fn)
         connector = spawn_node("connector", [bootstrap.node.my_con().to_json()])
 
         # Direct DSNode API
-        resp = connector.node.send_to_node("bootstrap", b"Hello, world!")
+        resp = connector.node.send_to_node("bootstrap", payload)
         self.assertEqual(resp, "OK")
 
     def test_send_to_node_wrapper(self):
