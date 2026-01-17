@@ -172,3 +172,12 @@ class DSNodeServer:
     
     def node_id(self) -> str:
         return self.config.node_id
+
+    def set_receive_cb(self, cb: Callable):
+        self.node.receive_cb = cb
+
+    def set_update_cb(self, cb: Callable):
+        self.node.update_cb = cb
+
+    def set_disconnect_cb(self, cb: Callable):
+        self.node.disconnect_cb = cb
