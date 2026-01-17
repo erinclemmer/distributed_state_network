@@ -8,7 +8,7 @@ from distributed_state_network.objects.config import DSNodeConfig
 from distributed_state_network.util.aes import generate_aes_key
 from distributed_state_network.util import stop_thread
 
-VERSION = "0.6.3"
+VERSION = "0.6.4"
 logging.basicConfig(level=logging.INFO)
 
 # Silence Flask and Werkzeug logging
@@ -19,6 +19,7 @@ MSG_HELLO = 1
 MSG_PEERS = 2
 MSG_UPDATE = 3
 MSG_PING = 4
+MSG_DATA = 5
 
 class DSNodeServer:
     def __init__(
@@ -60,6 +61,11 @@ class DSNodeServer:
         def handle_ping_route():
             return self._handle_request(MSG_PING, request.data, request.remote_addr)
 
+        @self.app.route('/data', methods=['POST'])
+        def handle_data_route():
+            return self._handle_request(MSG_DATA, request.data, request.remote_addr)
+
+
     def _handle_request(self, msg_type: int, data: bytes, remote_addr: str) -> Response:
         if not self.running:
             return Response(status=500)
@@ -94,6 +100,9 @@ class DSNodeServer:
                 
             elif msg_type == MSG_PING:
                 response_data = b''
+
+            elif msg_type == MSG_DATA:
+                response_data = self.node.receive_data(body)
             
             # Send response if handler returned data
             if response_data is not None:

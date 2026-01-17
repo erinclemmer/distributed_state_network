@@ -13,6 +13,7 @@ from distributed_state_network import DSNodeServer, Endpoint, DSNodeConfig
 
 from distributed_state_network.objects.state_packet import StatePacket
 from distributed_state_network.objects.hello_packet import HelloPacket
+from distributed_state_network.objects.data_packet import DataPacket
 
 from distributed_state_network.util.aes import generate_aes_key
 
@@ -481,7 +482,7 @@ class TestNode(unittest.TestCase):
         n = spawn_node("http-test-node")
         
         # Test that all endpoints exist
-        endpoints = ['/hello', '/peers', '/update', '/ping']
+        endpoints = ['/hello', '/peers', '/update', '/ping', '/data']
         
         for endpoint in endpoints:
             # Send a request to each endpoint (will fail due to encryption, but should return 400/500, not 404)
@@ -496,6 +497,57 @@ class TestNode(unittest.TestCase):
                 print(f"Endpoint {endpoint} exists (status: {response.status_code})")
             except Exception as e:
                 print(f"Endpoint {endpoint} test failed: {e}")
+
+    def test_send_to_node_success(self):
+        bootstrap = spawn_node("bootstrap")
+        connector = spawn_node("connector", [bootstrap.node.my_con().to_json()])
+
+        # Direct DSNode API
+        resp = connector.node.send_to_node("bootstrap", b"Hello, world!")
+        self.assertEqual(resp, "OK")
+
+    def test_send_to_node_wrapper(self):
+        bootstrap = spawn_node("bootstrap")
+        connector = spawn_node("connector", [bootstrap.node.my_con().to_json()])
+
+        # DSNodeServer wrapper
+        resp = connector.send_to_node("bootstrap", b"Hello via wrapper")
+        self.assertEqual(resp, "OK")
+
+    def test_data_route_unknown_sender(self):
+        # Start a single node; it should reject data packets from unknown senders
+        n = spawn_node("node")
+        time.sleep(0.5)  # Allow server to start
+
+        # Craft a DataPacket with a node_id that's not in address book
+        pkt = DataPacket("unknown", b"", b"payload")
+        encrypted = n.node.encrypt_data(bytes([5]) + pkt.to_bytes())  # MSG_DATA = 5
+
+        response = requests.post(
+            f'http://127.0.0.1:{n.config.port}/data',
+            data=encrypted,
+            headers={'Content-Type': 'application/octet-stream'},
+            timeout=2
+        )
+        self.assertEqual(response.status_code, 401)
+
+    def test_data_route_bad_signature(self):
+        # Connect two nodes so bootstrap knows connector's public key
+        bootstrap = spawn_node("bootstrap")
+        connector = spawn_node("connector", [bootstrap.node.my_con().to_json()])
+
+        # Create a packet claiming to be from connector but without a valid signature
+        pkt = DataPacket("connector", b"", b"payload")
+        encrypted = bootstrap.node.encrypt_data(bytes([5]) + pkt.to_bytes())  # MSG_DATA = 5
+
+        response = requests.post(
+            f'http://127.0.0.1:{bootstrap.config.port}/data',
+            data=encrypted,
+            headers={'Content-Type': 'application/octet-stream'},
+            timeout=2
+        )
+        # Should be unauthorized due to bad signature
+        self.assertEqual(response.status_code, 401)
 
 if __name__ == "__main__":
     unittest.main()
