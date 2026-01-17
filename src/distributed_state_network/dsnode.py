@@ -408,6 +408,6 @@ class DSNode:
             try:
                 self.receive_cb(data)
             except Exception as e:
-                traceback.print_exc(e)
+                print(e)
 
         return b'OK'
