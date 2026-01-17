@@ -307,16 +307,17 @@ class DSNode:
             raise Exception(f'PING => {node_id}: {e}')
 
     def send_update(self, node_id: str):
-        self.logger.info(f"UPDATE => {node_id}")
+        self.logger.debug(f"UPDATE => {node_id}")
         content = self.send_request_to_node(node_id, MSG_UPDATE, self.my_state().to_bytes())
         return content
 
     def handle_update(self, data: bytes):
         pkt = StatePacket.from_bytes(data)
-        self.logger.info(f"Received UPDATE from {pkt.node_id}")
         
         if not self.update_state(pkt):
             return b''
+
+        self.logger.info(f"Received UPDATE from {pkt.node_id}")
 
         if self.update_cb is not None:
             try:
