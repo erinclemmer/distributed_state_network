@@ -8,7 +8,7 @@ from distributed_state_network.objects.config import DSNodeConfig
 from distributed_state_network.util.aes import generate_aes_key
 from distributed_state_network.util import stop_thread
 
-VERSION = "0.6.2"
+VERSION = "0.6.3"
 logging.basicConfig(level=logging.INFO)
 
 # Silence Flask and Werkzeug logging
@@ -181,3 +181,6 @@ class DSNodeServer:
 
     def set_disconnect_cb(self, cb: Callable):
         self.node.disconnect_cb = cb
+
+    def receive_data(self, data: bytes):
+        self.node.receive_cb(data)
