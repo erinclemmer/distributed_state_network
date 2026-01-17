@@ -4,7 +4,6 @@ import random
 import logging
 import threading
 import requests
-import tracing
 from typing import Dict, List, Optional, Callable
 
 from distributed_state_network.objects.endpoint import Endpoint
