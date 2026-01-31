@@ -1,3 +1,6 @@
+### Notice:
+This project is being archived, if you want to use this package please get it from [the language-pipes repository](https://github.com/erinclemmer/language-pipes)
+
 # Distributed State Network
 
 A Python framework for building distributed applications where nodes automatically share state without explicit data requests.
